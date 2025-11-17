@@ -1,3 +1,5 @@
+SET search_path TO clube_quinze_app;
+
 CREATE TABLE planos (
     id BIGSERIAL PRIMARY KEY,
     nome VARCHAR(255) NOT NULL UNIQUE,

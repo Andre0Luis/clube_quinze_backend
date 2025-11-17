@@ -19,16 +19,78 @@ chmod +x scripts/fix-database.sh
 
 ## 🔍 Por que isso aconteceu?
 
-O PostgreSQL detecta dados existentes no volume e **pula a inicialização automática**. Isso significa que:
+### Estava Funcionando Antes, Por Quê Agora Não?
 
-1. ✅ O container do PostgreSQL está rodando
-2. ✅ O volume com dados anteriores existe
-3. ❌ Mas o banco `clube_quinze` não foi criado nesse volume
+**Resposta Rápida:** O volume do PostgreSQL JÁ EXISTIA na VPS!
 
-Isso geralmente acontece quando:
-- Você migra volumes entre ambientes
-- Você cria um volume manualmente
-- O script de inicialização não roda (só roda na primeira vez)
+Quando você rodou pela **primeira vez**, o PostgreSQL:
+1. ✅ Criou o volume vazio
+2. ✅ Viu que estava vazio
+3. ✅ Rodou a inicialização automática
+4. ✅ Criou o banco `clube_quinze` (via variável `POSTGRES_DB`)
+5. ✅ Tudo funcionou!
+
+Quando você **reiniciou o container** (ou o servidor):
+1. ✅ Container subiu novamente
+2. ✅ PostgreSQL verificou o volume
+3. ❌ **VIU DADOS EXISTENTES no volume**
+4. ❌ **PULOU a inicialização** (pensa: "já está configurado")
+5. ❌ MAS o banco `clube_quinze` NÃO EXISTE nesse volume!
+
+### Por Que o Banco Sumiu?
+
+O banco não "sumiu". Provavelmente aconteceu uma destas situações:
+
+**Cenário 1: Volume foi removido acidentalmente**
+```bash
+# Alguém rodou (acidentalmente):
+docker compose down -v  # ← Flag -v REMOVE volumes!
+docker volume prune     # ← Remove volumes não usados
+```
+
+**Cenário 2: Nome do projeto mudou**
+```bash
+# Volume antigo: projeto-antigo_postgres_data
+# Volume novo:   clubequinzeapi_postgres_data (nome diferente!)
+# PostgreSQL criou um volume NOVO e vazio
+```
+
+**Cenário 3: Banco foi dropado manualmente**
+```bash
+# Alguém conectou e dropou:
+DROP DATABASE clube_quinze;  # ← Removeu o banco
+```
+
+**Cenário 4: Corrupção de dados**
+- Desligamento abrupto do servidor
+- Disco cheio durante write
+- Problema no sistema de arquivos
+
+### Como o PostgreSQL Funciona
+
+```
+PRIMEIRA VEZ (volume vazio):
+├─ PostgreSQL inicia
+├─ Verifica /var/lib/postgresql/data
+├─ Está VAZIO ✓
+├─ Executa scripts em /docker-entrypoint-initdb.d/
+├─ Cria banco pela variável POSTGRES_DB
+└─ SUCESSO! ✓
+
+PRÓXIMAS VEZES (volume com dados):
+├─ PostgreSQL inicia
+├─ Verifica /var/lib/postgresql/data
+├─ Tem DADOS ✓
+├─ PULA inicialização (acha que já configurou)
+└─ USA dados existentes
+```
+
+### O Problema
+
+Se o volume tem dados MAS não tem o banco `clube_quinze`:
+- PostgreSQL: "Já tenho dados, não preciso inicializar" ❌
+- Aplicação: "Cadê o banco clube_quinze?" ❌
+- ERRO: "database clube_quinze does not exist" ❌
 
 ---
 
@@ -146,6 +208,78 @@ Os scripts agora lidam com isso automaticamente:
 ```bash
 # Sempre antes de mudanças importantes
 ./scripts/backup-database.sh
+```
+
+### 4. NUNCA Use `-v` Sem Querer!
+
+```bash
+# ❌ PERIGO! Remove volumes (apaga dados)
+docker compose down -v
+
+# ✅ SEGURO! Mantém volumes (preserva dados)
+docker compose down
+```
+
+### 5. Investigar o Que Aconteceu na Sua VPS
+
+Execute estes comandos para entender o que rolou:
+
+```bash
+# Ver quando o volume foi criado
+docker volume inspect clubequinzeapi_postgres_data | grep CreatedAt
+
+# Ver se há backups recentes
+ls -lh backups/
+
+# Ver histórico de comandos (se salvou)
+history | grep docker
+
+# Ver logs do sistema
+journalctl -u docker -n 100
+
+# Verificar disco cheio
+df -h
+
+# Ver quando containers foram criados
+docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}"
+```
+
+### 6. Monitoramento Recomendado
+
+Para produção, configure:
+
+**a) Backups Automáticos Diários:**
+```bash
+# Adicionar ao crontab
+crontab -e
+
+# Backup diário às 2h
+0 2 * * * cd /caminho/projeto && ./scripts/backup-database.sh
+
+# Limpar backups com mais de 7 dias
+0 3 * * * find /caminho/projeto/backups/ -name "*.sql*" -mtime +7 -delete
+```
+
+**b) Alertas de Disco:**
+```bash
+# Script para alertar se disco > 80%
+#!/bin/bash
+USAGE=$(df -h / | tail -1 | awk '{print $5}' | sed 's/%//')
+if [ $USAGE -gt 80 ]; then
+    echo "ALERTA: Disco em $USAGE%" | mail -s "Disco Cheio" seu@email.com
+fi
+```
+
+**c) Health Check da Aplicação:**
+```bash
+# Verificar se aplicação está respondendo
+curl -f http://localhost:8080/actuator/health || echo "API DOWN!"
+```
+
+**d) Logs Centralizados:**
+```bash
+# Salvar logs em arquivo
+docker compose logs -f > logs/app_$(date +%Y%m%d).log 2>&1 &
 ```
 
 ---

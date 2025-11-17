@@ -12,7 +12,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres", "-d", "clube_quinze"]
       interval: 10s
@@ -38,6 +38,28 @@ services:
       SPRING_PROFILES_ACTIVE: prod
     restart: on-failure
 
+  db-backup:
+    image: ghcr.io/prodrigestivill/postgres-backup-local:16
+    container_name: clube-quinze-db-backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: clube_quinze
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_EXTRA_OPTS: -n clube_quinze_app
+      SCHEDULE: "0 3 * * *"
+      BACKUP_KEEP_DAYS: 7
+      BACKUP_KEEP_WEEKS: 4
+      BACKUP_KEEP_MONTHS: 6
+      HEALTHCHECK_PORT: 8080
+    volumes:
+      - ./backups:/backups
+
 volumes:
   postgres_data:
+    name: clube-quinze-postgres-data  # volume nomeado garante persistência estável para backups
   # maven_cache: # opcional: habilite se quiser acelerar builds locais montando ~/.m2
