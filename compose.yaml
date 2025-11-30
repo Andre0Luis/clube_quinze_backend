@@ -4,6 +4,10 @@ services:
     image: postgres:15
     container_name: clube-quinze-postgres
     restart: unless-stopped
+    mem_limit: 1536m
+    mem_reservation: 512m
+    cpus: "1.5"
+    stop_grace_period: 60s
     environment:
       POSTGRES_DB: clube_quinze
       POSTGRES_USER: postgres
@@ -12,7 +16,9 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+      - ./backups:/backups:ro
+      - ./scripts/restore-from-backup.sh:/docker-entrypoint-initdb.d/10-restore-from-backup.sh:ro
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/20-init-db.sh:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres", "-d", "clube_quinze"]
       interval: 10s
@@ -36,15 +42,21 @@ services:
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       SPRING_PROFILES_ACTIVE: prod
-    restart: on-failure
+    restart: unless-stopped
+    mem_limit: 768m
+    mem_reservation: 256m
+    cpus: "0.75"
 
   db-backup:
-    image: ghcr.io/prodrigestivill/postgres-backup-local:16
+    image: prodrigestivill/postgres-backup-local:16
     container_name: clube-quinze-db-backup
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: "0.4"
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_DB: clube_quinze
