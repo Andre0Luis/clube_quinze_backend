@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+echo "[restore-from-backup] Script iniciado (PID $$)"
 
 # Executado automaticamente pelo entrypoint do Postgres quando o diretório de dados está vazio.
 # Procura pelo dump mais recente em /backups e restaura antes da aplicação subir.
@@ -13,6 +14,7 @@ if [ ! -d "$BACKUP_DIR" ]; then
   exit 0
 fi
 
+echo "[restore-from-backup] Catalogando arquivos em $BACKUP_DIR"
 mapfile -t backups < <(ls -1t "$BACKUP_DIR"/backup_*.sql "$BACKUP_DIR"/backup_*.sql.gz 2>/dev/null || true)
 
 if [ ${#backups[@]} -eq 0 ]; then
@@ -22,6 +24,7 @@ fi
 
 LATEST="${backups[0]}"
 
+echo "[restore-from-backup] Encontrados ${#backups[@]} arquivo(s)"
 echo "[restore-from-backup] Restaurando do arquivo: $LATEST"
 
 if [[ "$LATEST" == *.gz ]]; then

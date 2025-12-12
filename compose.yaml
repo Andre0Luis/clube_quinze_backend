@@ -7,6 +7,20 @@ services:
     mem_reservation: 512m
     cpus: "0.6"
     stop_grace_period: 60s
+    command:
+      - postgres
+      - -c
+      - logging_collector=on
+      - -c
+      - log_destination=stderr
+      - -c
+      - log_connections=on
+      - -c
+      - log_disconnections=on
+      - -c
+      - log_min_duration_statement=0
+      - -c
+      - log_statement=all
     environment:
       POSTGRES_DB: clube_quinze
       POSTGRES_USER: postgres
@@ -22,7 +36,8 @@ services:
       test: ["CMD", "pg_isready", "-U", "postgres", "-d", "clube_quinze"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 6
+      start_period: 40s
 
   api:
     build: .
@@ -67,6 +82,7 @@ services:
       BACKUP_KEEP_WEEKS: 4
       BACKUP_KEEP_MONTHS: 6
       HEALTHCHECK_PORT: 8080
+      LOG_LEVEL: debug
     volumes:
       - ./backups:/backups
 
