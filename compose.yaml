@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   postgres:
     image: postgres:15
@@ -6,7 +5,7 @@ services:
     restart: unless-stopped
     mem_limit: 1536m
     mem_reservation: 512m
-    cpus: "1.5"
+    cpus: "0.6"
     stop_grace_period: 60s
     environment:
       POSTGRES_DB: clube_quinze
@@ -45,7 +44,7 @@ services:
     restart: unless-stopped
     mem_limit: 768m
     mem_reservation: 256m
-    cpus: "0.75"
+    cpus: "0.3"
 
   db-backup:
     image: prodrigestivill/postgres-backup-local:16
@@ -56,7 +55,7 @@ services:
         condition: service_healthy
     mem_limit: 512m
     mem_reservation: 128m
-    cpus: "0.4"
+    cpus: "0.2"
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_DB: clube_quinze
