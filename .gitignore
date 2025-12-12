@@ -43,6 +43,7 @@ backups/
 *.sql.gz
 *.dump
 *.backup
+!src/main/resources/db/migration/*.sql
 
 ### Logs ###
 *.log

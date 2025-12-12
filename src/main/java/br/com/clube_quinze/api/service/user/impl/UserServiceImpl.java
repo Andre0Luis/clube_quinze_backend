@@ -4,12 +4,15 @@ import br.com.clube_quinze.api.dto.appointment.AppointmentResponse;
 import br.com.clube_quinze.api.dto.payment.PlanSummary;
 import br.com.clube_quinze.api.dto.preference.PreferenceResponse;
 import br.com.clube_quinze.api.dto.user.UpdateUserRequest;
+import br.com.clube_quinze.api.dto.user.UserGalleryPhotoRequest;
+import br.com.clube_quinze.api.dto.user.UserGalleryPhotoResponse;
 import br.com.clube_quinze.api.dto.user.UserProfileResponse;
 import br.com.clube_quinze.api.exception.BusinessException;
 import br.com.clube_quinze.api.exception.ResourceNotFoundException;
 import br.com.clube_quinze.api.model.appointment.Appointment;
 import br.com.clube_quinze.api.model.payment.Plan;
 import br.com.clube_quinze.api.model.user.User;
+import br.com.clube_quinze.api.model.user.UserGalleryPhoto;
 import br.com.clube_quinze.api.model.user.UserPreference;
 import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.PlanRepository;
@@ -18,8 +21,12 @@ import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.service.user.UserService;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -74,6 +81,11 @@ public class UserServiceImpl implements UserService {
         }
         user.setPlan(plan);
 
+        user.setProfilePictureUrl(normalizeOptional(request.profilePictureUrl()));
+        user.setProfilePictureBase64(normalizeOptional(request.profilePictureBase64()));
+
+        applyGallery(user, request.gallery());
+
         User updated = userRepository.save(user);
         return buildUserProfileResponse(updated);
     }
@@ -97,6 +109,11 @@ public class UserServiceImpl implements UserService {
                 .map(this::toPreferenceResponse)
                 .toList();
 
+        List<UserGalleryPhotoResponse> gallery = user.getGalleryPhotos().stream()
+            .sorted(Comparator.comparing(UserGalleryPhoto::getPosition))
+            .map(this::toGalleryPhotoResponse)
+            .toList();
+
         return new UserProfileResponse(
                 user.getId(),
                 user.getName(),
@@ -109,7 +126,10 @@ public class UserServiceImpl implements UserService {
                 user.getCreatedAt(),
                 user.getLastLogin(),
                 nextAppointment,
-                preferences);
+            preferences,
+            user.getProfilePictureUrl(),
+            user.getProfilePictureBase64(),
+            gallery);
     }
 
     private PlanSummary toPlanSummary(Plan plan) {
@@ -134,5 +154,74 @@ public class UserServiceImpl implements UserService {
                 preference.getPreferenceValue(),
                 preference.getCreatedAt(),
                 preference.getUpdatedAt());
+    }
+
+    private UserGalleryPhotoResponse toGalleryPhotoResponse(UserGalleryPhoto photo) {
+        return new UserGalleryPhotoResponse(
+                photo.getId(),
+                photo.getPosition(),
+                photo.getImageUrl(),
+                photo.getImageBase64());
+    }
+
+    private void applyGallery(User user, List<UserGalleryPhotoRequest> galleryRequests) {
+        if (galleryRequests == null) {
+            return;
+        }
+
+        user.getGalleryPhotos().clear();
+        if (galleryRequests.isEmpty()) {
+            return;
+        }
+
+        List<UserGalleryPhoto> photos = new ArrayList<>();
+        Set<Integer> positions = new HashSet<>();
+        int fallback = 0;
+
+        for (UserGalleryPhotoRequest request : galleryRequests) {
+            if (request == null) {
+                continue;
+            }
+
+            String url = normalizeOptional(request.imageUrl());
+            String base64 = normalizeOptional(request.imageBase64());
+
+            if (url == null && base64 == null) {
+                continue;
+            }
+
+            int position = request.position() != null ? request.position() : fallback;
+            fallback++;
+
+            if (position < 0 || position > 3) {
+                throw new BusinessException("Posição da foto deve estar entre 0 e 3");
+            }
+
+            if (!positions.add(position)) {
+                throw new BusinessException("Posição da foto duplicada na galeria");
+            }
+
+            UserGalleryPhoto photo = new UserGalleryPhoto();
+            photo.setUser(user);
+            photo.setPosition(position);
+            photo.setImageUrl(url);
+            photo.setImageBase64(base64);
+            photos.add(photo);
+        }
+
+        if (photos.size() > 4) {
+            throw new BusinessException("Limite máximo de 4 fotos na galeria");
+        }
+
+        photos.sort(Comparator.comparing(UserGalleryPhoto::getPosition));
+        user.getGalleryPhotos().addAll(photos);
+    }
+
+    private String normalizeOptional(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

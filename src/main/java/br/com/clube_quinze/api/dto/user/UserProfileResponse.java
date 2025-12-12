@@ -21,5 +21,8 @@ public record UserProfileResponse(
         LocalDateTime createdAt,
         LocalDateTime lastLogin,
         AppointmentResponse nextAppointment,
-        List<PreferenceResponse> preferences) {
+        List<PreferenceResponse> preferences,
+        String profilePictureUrl,
+        String profilePictureBase64,
+        List<UserGalleryPhotoResponse> gallery) {
 }

@@ -11,11 +11,14 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Entity
@@ -36,11 +39,9 @@ public class CommunityPost {
     @Column(nullable = false, length = 4096)
     private String content;
 
-    @Column(name = "image_url")
-    private String imageUrl;
-
-    @Column(name = "image_base64", length = 1048576)
-    private String imageBase64;
+    @OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("position ASC, id ASC")
+    private List<CommunityPostMedia> media = new ArrayList<>();
 
     @OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<CommunityComment> comments = new HashSet<>();
@@ -98,20 +99,12 @@ public class CommunityPost {
         this.content = content;
     }
 
-    public String getImageUrl() {
-        return imageUrl;
+    public List<CommunityPostMedia> getMedia() {
+        return media;
     }
 
-    public void setImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
-    }
-
-    public String getImageBase64() {
-        return imageBase64;
-    }
-
-    public void setImageBase64(String imageBase64) {
-        this.imageBase64 = imageBase64;
+    public void setMedia(List<CommunityPostMedia> media) {
+        this.media = media;
     }
 
     public Set<CommunityComment> getComments() {

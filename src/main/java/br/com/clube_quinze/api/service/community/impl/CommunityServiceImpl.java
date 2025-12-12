@@ -4,6 +4,8 @@ import br.com.clube_quinze.api.dto.common.PageResponse;
 import br.com.clube_quinze.api.dto.community.CommentRequest;
 import br.com.clube_quinze.api.dto.community.CommentResponse;
 import br.com.clube_quinze.api.dto.community.LikeResponse;
+import br.com.clube_quinze.api.dto.community.PostMediaRequest;
+import br.com.clube_quinze.api.dto.community.PostMediaResponse;
 import br.com.clube_quinze.api.dto.community.PostRequest;
 import br.com.clube_quinze.api.dto.community.PostResponse;
 import br.com.clube_quinze.api.exception.BusinessException;
@@ -12,6 +14,7 @@ import br.com.clube_quinze.api.exception.UnauthorizedException;
 import br.com.clube_quinze.api.model.community.CommunityComment;
 import br.com.clube_quinze.api.model.community.CommunityLike;
 import br.com.clube_quinze.api.model.community.CommunityPost;
+import br.com.clube_quinze.api.model.community.CommunityPostMedia;
 import br.com.clube_quinze.api.model.user.User;
 import br.com.clube_quinze.api.repository.CommunityCommentRepository;
 import br.com.clube_quinze.api.repository.CommunityLikeRepository;
@@ -19,7 +22,10 @@ import br.com.clube_quinze.api.repository.CommunityPostRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.service.community.CommunityService;
 import br.com.clube_quinze.api.util.PageUtils;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -76,8 +82,7 @@ public class CommunityServiceImpl implements CommunityService {
         post.setAuthor(author);
         post.setTitle(title);
         post.setContent(content);
-        post.setImageUrl(normalizeOptional(request.imageUrl()));
-        post.setImageBase64(normalizeOptional(request.imageBase64()));
+        replaceMedia(post, request.media());
 
         CommunityPost saved = postRepository.save(post);
         return toPostResponse(saved);
@@ -157,13 +162,15 @@ public class CommunityServiceImpl implements CommunityService {
                 .map(this::toCommentResponse)
                 .toList();
         long likeCount = likeRepository.countByPostId(post.getId());
+        List<PostMediaResponse> media = post.getMedia().stream()
+                .map(m -> new PostMediaResponse(m.getId(), m.getPosition(), m.getImageUrl(), m.getImageBase64()))
+                .toList();
         return new PostResponse(
                 post.getId(),
                 post.getAuthor().getId(),
                 post.getTitle(),
                 post.getContent(),
-                post.getImageUrl(),
-                post.getImageBase64(),
+                media,
                 post.getCreatedAt(),
                 post.getUpdatedAt(),
                 likeCount,
@@ -202,5 +209,58 @@ public class CommunityServiceImpl implements CommunityService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private void replaceMedia(CommunityPost post, List<PostMediaRequest> mediaRequests) {
+        if (mediaRequests == null) {
+            return;
+        }
+
+        post.getMedia().clear();
+        if (mediaRequests.isEmpty()) {
+            return;
+        }
+
+        List<CommunityPostMedia> items = new ArrayList<>();
+        Set<Integer> positions = new HashSet<>();
+        int fallback = 0;
+
+        for (PostMediaRequest mediaRequest : mediaRequests) {
+            if (mediaRequest == null) {
+                continue;
+            }
+
+            String url = normalizeOptional(mediaRequest.imageUrl());
+            String base64 = normalizeOptional(mediaRequest.imageBase64());
+
+            if (url == null && base64 == null) {
+                continue;
+            }
+
+            int position = mediaRequest.position() != null ? mediaRequest.position() : fallback;
+            fallback++;
+
+            if (position < 0) {
+                throw new BusinessException("Posição da foto não pode ser negativa");
+            }
+
+            if (!positions.add(position)) {
+                throw new BusinessException("Posição da foto duplicada");
+            }
+
+            CommunityPostMedia media = new CommunityPostMedia();
+            media.setPost(post);
+            media.setPosition(position);
+            media.setImageUrl(url);
+            media.setImageBase64(base64);
+            items.add(media);
+        }
+
+        if (items.size() > 6) {
+            throw new BusinessException("Limite máximo de 6 fotos por post");
+        }
+
+        items.sort((a, b) -> Integer.compare(a.getPosition(), b.getPosition()));
+        post.getMedia().addAll(items);
     }
 }

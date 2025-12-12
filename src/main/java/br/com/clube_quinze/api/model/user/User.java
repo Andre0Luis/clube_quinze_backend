@@ -15,11 +15,14 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Entity
@@ -66,8 +69,18 @@ public class User {
     @Column(name = "ativo", nullable = false)
     private boolean active = true;
 
+    @Column(name = "profile_picture_url")
+    private String profilePictureUrl;
+
+    @Column(name = "profile_picture_base64", length = 1048576)
+    private String profilePictureBase64;
+
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<UserPreference> preferences = new HashSet<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("position ASC, id ASC")
+    private List<UserGalleryPhoto> galleryPhotos = new ArrayList<>();
 
     @PrePersist
     protected void onCreate() {
@@ -176,5 +189,29 @@ public class User {
 
     public void setPreferences(Set<UserPreference> preferences) {
         this.preferences = preferences;
+    }
+
+    public String getProfilePictureUrl() {
+        return profilePictureUrl;
+    }
+
+    public void setProfilePictureUrl(String profilePictureUrl) {
+        this.profilePictureUrl = profilePictureUrl;
+    }
+
+    public String getProfilePictureBase64() {
+        return profilePictureBase64;
+    }
+
+    public void setProfilePictureBase64(String profilePictureBase64) {
+        this.profilePictureBase64 = profilePictureBase64;
+    }
+
+    public List<UserGalleryPhoto> getGalleryPhotos() {
+        return galleryPhotos;
+    }
+
+    public void setGalleryPhotos(List<UserGalleryPhoto> galleryPhotos) {
+        this.galleryPhotos = galleryPhotos;
     }
 }
