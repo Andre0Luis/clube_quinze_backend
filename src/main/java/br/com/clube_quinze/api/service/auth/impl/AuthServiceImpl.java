@@ -17,6 +17,7 @@ import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.security.JwtProperties;
 import br.com.clube_quinze.api.security.JwtTokenProvider;
 import br.com.clube_quinze.api.service.auth.AuthService;
+import br.com.clube_quinze.api.service.notification.NotificationService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -39,6 +40,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtProperties jwtProperties;
     private final Clock clock;
+    private final NotificationService notificationService;
 
     public AuthServiceImpl(
             AuthenticationManager authenticationManager,
@@ -48,7 +50,8 @@ public class AuthServiceImpl implements AuthService {
             PasswordEncoder passwordEncoder,
             JwtTokenProvider jwtTokenProvider,
             JwtProperties jwtProperties,
-            Clock clock) {
+            Clock clock,
+            NotificationService notificationService) {
         this.authenticationManager = authenticationManager;
         this.userRepository = userRepository;
         this.planRepository = planRepository;
@@ -57,6 +60,7 @@ public class AuthServiceImpl implements AuthService {
         this.jwtTokenProvider = jwtTokenProvider;
         this.jwtProperties = jwtProperties;
         this.clock = clock;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -82,6 +86,10 @@ public class AuthServiceImpl implements AuthService {
         }
 
         User savedUser = userRepository.save(user);
+
+        // Envio de boas-vindas com credenciais (assíncrono)
+        notificationService.notifyWelcome(savedUser.getEmail(), savedUser.getName(), request.password());
+
         return issueTokensFor(savedUser);
     }
 

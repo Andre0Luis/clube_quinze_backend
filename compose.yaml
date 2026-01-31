@@ -15,10 +15,22 @@ services:
       JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES}
       JWT_REFRESH_EXPIRATION_DAYS: ${JWT_REFRESH_EXPIRATION_DAYS}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      MEDIA_STORAGE_PATH: ${MEDIA_STORAGE_PATH:-/uploads}
+      MEDIA_BASE_URL: ${MEDIA_BASE_URL:-https://clubequinzeapp.cloud/uploads}
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      MAIL_SMTP_AUTH: ${MAIL_SMTP_AUTH}
+      MAIL_SMTP_STARTTLS: ${MAIL_SMTP_STARTTLS}
+      MAIL_SMTP_STARTTLS_REQUIRED: ${MAIL_SMTP_STARTTLS_REQUIRED}
+      MAIL_FROM: ${MAIL_FROM}
     restart: unless-stopped
     mem_limit: 768m
     mem_reservation: 256m
     cpus: "0.3"
+    volumes:
+      - ./uploads:/uploads
 
   nginx:
     image: nginx:1.25-alpine
@@ -35,6 +47,7 @@ services:
       # Caminho relativo para funcionar no pipeline (o compose roda no checkout em /tmp/...)
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./uploads:/var/www/uploads:ro
     restart: unless-stopped
 
   db-backup:

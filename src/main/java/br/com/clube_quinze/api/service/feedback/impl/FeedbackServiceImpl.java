@@ -15,6 +15,7 @@ import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.FeedbackRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.service.feedback.FeedbackService;
+import br.com.clube_quinze.api.service.notification.NotificationService;
 import br.com.clube_quinze.api.util.PageUtils;
 import java.util.List;
 import org.springframework.data.domain.Page;
@@ -30,14 +31,17 @@ public class FeedbackServiceImpl implements FeedbackService {
     private final FeedbackRepository feedbackRepository;
     private final AppointmentRepository appointmentRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     public FeedbackServiceImpl(
             FeedbackRepository feedbackRepository,
             AppointmentRepository appointmentRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            NotificationService notificationService) {
         this.feedbackRepository = feedbackRepository;
         this.appointmentRepository = appointmentRepository;
         this.userRepository = userRepository;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -65,6 +69,13 @@ public class FeedbackServiceImpl implements FeedbackService {
         feedback.setComment(request.comment());
 
         Feedback saved = feedbackRepository.save(feedback);
+
+        // Notificar de forma assíncrona sem impactar a resposta
+        notificationService.notifyFeedbackReceived(
+            client.getId(),
+            appointment.getId(),
+            request.rating());
+
         return toResponse(saved);
     }
 
