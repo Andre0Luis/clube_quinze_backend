@@ -14,6 +14,9 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -24,19 +27,22 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 @EnableMethodSecurity
-@EnableConfigurationProperties(JwtProperties.class)
+@EnableConfigurationProperties({JwtProperties.class, CorsProperties.class})
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
+    private final CorsProperties corsProperties;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
             RestAuthenticationEntryPoint authenticationEntryPoint,
-            RestAccessDeniedHandler accessDeniedHandler) {
+            RestAccessDeniedHandler accessDeniedHandler,
+            CorsProperties corsProperties) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.authenticationEntryPoint = authenticationEntryPoint;
         this.accessDeniedHandler = accessDeniedHandler;
+        this.corsProperties = corsProperties;
     }
 
     @Bean
@@ -49,6 +55,7 @@ public class SecurityConfig {
             .requestMatchers("/actuator/health", "/api-docs/**", "/swagger-ui.html", "/swagger-ui/**",
                 "/api/v1/auth/**")
                         .permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/public/policies/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/community/**").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex
@@ -56,6 +63,30 @@ public class SecurityConfig {
                         .accessDeniedHandler(accessDeniedHandler))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        if (corsProperties.getAllowedOrigins().isEmpty() && corsProperties.getAllowedOriginPatterns().isEmpty()) {
+            configuration.setAllowedOriginPatterns(List.of("*"));
+        } else {
+            if (!corsProperties.getAllowedOrigins().isEmpty()) {
+                configuration.setAllowedOrigins(corsProperties.getAllowedOrigins());
+            }
+            if (!corsProperties.getAllowedOriginPatterns().isEmpty()) {
+                configuration.setAllowedOriginPatterns(corsProperties.getAllowedOriginPatterns());
+            }
+        }
+        configuration.setAllowedMethods(corsProperties.getAllowedMethods());
+        configuration.setAllowedHeaders(corsProperties.getAllowedHeaders());
+        configuration.setExposedHeaders(corsProperties.getExposedHeaders());
+        configuration.setAllowCredentials(corsProperties.isAllowCredentials());
+        configuration.setMaxAge(corsProperties.getMaxAge());
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 
     @Bean

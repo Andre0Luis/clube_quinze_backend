@@ -3,6 +3,8 @@ services:
   api:
     build: .
     container_name: clube-quinze-api
+    env_file:
+      - .env
     networks:
       - mariadb-mnl3_default
     ports:
@@ -54,6 +56,8 @@ services:
     image: fradelg/mysql-cron-backup
     container_name: clube-quinze-db-backup
     restart: unless-stopped
+    env_file:
+      - .env
     networks:
       - mariadb-mnl3_default
     mem_limit: 512m

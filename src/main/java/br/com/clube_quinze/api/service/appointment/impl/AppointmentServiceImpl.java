@@ -43,12 +43,15 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     private final AppointmentRepository appointmentRepository;
     private final UserRepository userRepository;
+    private final br.com.clube_quinze.api.service.notification.PushNotificationService pushNotificationService;
     private final Clock clock;
 
-    public AppointmentServiceImpl(AppointmentRepository appointmentRepository, UserRepository userRepository, Clock clock) {
+    public AppointmentServiceImpl(AppointmentRepository appointmentRepository, UserRepository userRepository, Clock clock,
+            br.com.clube_quinze.api.service.notification.PushNotificationService pushNotificationService) {
         this.appointmentRepository = appointmentRepository;
         this.userRepository = userRepository;
         this.clock = clock;
+        this.pushNotificationService = pushNotificationService;
     }
 
     @Override
@@ -149,6 +152,14 @@ public class AppointmentServiceImpl implements AppointmentService {
         enforceOwnership(appointment, actorId, privileged);
         appointment.setStatus(AppointmentStatus.CANCELED);
         appointmentRepository.save(appointment);
+        // send immediate push notification to user about cancellation (best-effort, async)
+        try {
+            var data = java.util.Map.<String, Object>of("appointmentId", appointment.getId());
+            pushNotificationService.sendToUser(appointment.getClient().getId(), "CANCELLED",
+                    "Agendamento cancelado", "Seu agendamento foi cancelado pelo clube.", data);
+        } catch (Exception ex) {
+            // do not break cancel flow on notification errors
+        }
     }
 
     @Override
