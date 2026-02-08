@@ -52,6 +52,12 @@ public class UserController {
         return ResponseEntity.ok(userService.getProfile(userId));
     }
 
+    @GetMapping("/ping")
+    @Operation(summary = "Verificar disponibilidade do endpoint de usuários")
+    public ResponseEntity<String> ping() {
+        return ResponseEntity.ok("Isso tá funcionando");
+    }
+
     @GetMapping
     @Operation(summary = "Listar membros cadastrados", description = "Retorna todos os usuários ativos e permite filtrar por plano (texto parcial, case-insensitive, ex: 'standard', 'premium', 'select').")
     @PreAuthorize("hasAnyRole('CLUB_EMPLOYE','CLUB_ADMIN')")
