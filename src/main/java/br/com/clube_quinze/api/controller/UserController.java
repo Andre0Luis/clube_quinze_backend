@@ -2,6 +2,7 @@ package br.com.clube_quinze.api.controller;
 
 import br.com.clube_quinze.api.dto.user.UpdateUserRequest;
 import br.com.clube_quinze.api.dto.user.UserProfileResponse;
+import br.com.clube_quinze.api.dto.user.UserSummary;
 import br.com.clube_quinze.api.exception.UnauthorizedException;
 import br.com.clube_quinze.api.security.ClubeQuinzeUserDetails;
 import br.com.clube_quinze.api.service.user.UserService;
@@ -15,17 +16,17 @@ import java.util.List;
 import java.util.Locale;
 import java.util.TreeMap;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
-import org.springframework.http.MediaType;
 import br.com.clube_quinze.api.dto.user.UserGalleryPhotoRequest;
 import br.com.clube_quinze.api.service.media.MediaStorageService;
 import br.com.clube_quinze.api.exception.BusinessException;
@@ -49,6 +50,14 @@ public class UserController {
             @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser) {
         Long userId = extractUserId(currentUser);
         return ResponseEntity.ok(userService.getProfile(userId));
+    }
+
+    @GetMapping
+    @Operation(summary = "Listar membros cadastrados", description = "Retorna todos os usuários ativos e permite filtrar por plano (texto parcial, case-insensitive, ex: 'standard', 'premium', 'select').")
+    @PreAuthorize("hasAnyRole('CLUB_EMPLOYE','CLUB_ADMIN')")
+    public ResponseEntity<List<UserSummary>> listUsers(
+            @RequestParam(value = "plan", required = false) String plan) {
+        return ResponseEntity.ok(userService.listMembers(plan));
     }
 
     @PutMapping("/me")

@@ -7,6 +7,7 @@ import br.com.clube_quinze.api.dto.user.UpdateUserRequest;
 import br.com.clube_quinze.api.dto.user.UserGalleryPhotoRequest;
 import br.com.clube_quinze.api.dto.user.UserGalleryPhotoResponse;
 import br.com.clube_quinze.api.dto.user.UserProfileResponse;
+import br.com.clube_quinze.api.dto.user.UserSummary;
 import br.com.clube_quinze.api.exception.BusinessException;
 import br.com.clube_quinze.api.exception.ResourceNotFoundException;
 import br.com.clube_quinze.api.model.appointment.Appointment;
@@ -57,6 +58,18 @@ public class UserServiceImpl implements UserService {
     public UserProfileResponse getProfile(Long userId) {
         User user = findUser(userId);
         return buildUserProfileResponse(user);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserSummary> listMembers(String planFilter) {
+        String normalizedFilter = normalizeOptional(planFilter);
+        List<User> users = normalizedFilter == null
+                ? userRepository.findAllByOrderByNameAsc()
+                : userRepository.findByPlan_NameContainingIgnoreCaseOrderByNameAsc(normalizedFilter);
+        return users.stream()
+                .map(this::toUserSummary)
+                .toList();
     }
 
     @Override
@@ -134,6 +147,21 @@ public class UserServiceImpl implements UserService {
 
     private PlanSummary toPlanSummary(Plan plan) {
         return new PlanSummary(plan.getId(), plan.getName(), plan.getDescription(), plan.getPrice(), plan.getDurationMonths());
+    }
+
+    private UserSummary toUserSummary(User user) {
+        PlanSummary planSummary = Optional.ofNullable(user.getPlan()).map(this::toPlanSummary).orElse(null);
+        return new UserSummary(
+                user.getId(),
+                user.getName(),
+                user.getEmail(),
+                user.getPhone(),
+                user.getBirthDate(),
+                user.getMembershipTier(),
+                user.getRole(),
+                user.getCreatedAt(),
+                user.getLastLogin(),
+                planSummary);
     }
 
     private AppointmentResponse toAppointmentResponse(Appointment appointment) {
