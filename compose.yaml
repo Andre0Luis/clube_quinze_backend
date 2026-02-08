@@ -1,10 +1,7 @@
 services:
 
   api:
-    build:
-      context: .
-      args:
-        APP_VERSION: ${APP_VERSION}
+    build: .
     container_name: clube-quinze-api
     env_file:
       - .env
