@@ -1,7 +1,12 @@
 services:
 
   api:
-    build: .
+    build:
+      context: .
+      no_cache: true
+      args:
+        REPO_URL: ${REPO_URL:-https://github.com/Andre0Luis/clube_quinze_backend.git}
+        REPO_REF: ${REPO_REF:-main}
     container_name: clube-quinze-api
     env_file:
       - .env
