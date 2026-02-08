@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1.4
+ARG APP_VERSION
 FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /workspace
 COPY mvnw mvnw.cmd pom.xml ./
@@ -11,6 +12,8 @@ RUN ./mvnw -B -DskipTests clean package
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 ENV JAVA_OPTS=""
+LABEL application="clube-quinze-api" version="${APP_VERSION}"
+ENV APP_VERSION="${APP_VERSION}"
 # Copia qualquer JAR gerado pelo build (evita quebrar quando a versão do artefato muda)
 COPY --from=builder /workspace/target/*.jar /app/app.jar
 # Copia script de espera

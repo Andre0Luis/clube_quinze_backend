@@ -39,7 +39,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     private static final LocalTime OPENING_TIME = LocalTime.of(9, 0);
     private static final LocalTime CLOSING_TIME = LocalTime.of(21, 0);
-    private static final Duration SLOT_DURATION = Duration.ofMinutes(60);
+    private static final Duration SLOT_DURATION = Duration.ofMinutes(30);
 
     private final AppointmentRepository appointmentRepository;
     private final UserRepository userRepository;

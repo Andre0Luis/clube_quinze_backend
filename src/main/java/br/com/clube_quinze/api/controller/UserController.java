@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import br.com.clube_quinze.api.dto.user.UserGalleryPhotoRequest;
 import br.com.clube_quinze.api.service.media.MediaStorageService;
 import br.com.clube_quinze.api.exception.BusinessException;
@@ -89,7 +90,7 @@ public class UserController {
             @RequestPart(value = "profilePicture", required = false) MultipartFile profilePicture,
             @RequestPart(value = "gallery", required = false) List<MultipartFile> galleryFiles,
             @RequestPart(value = "galleryPosition", required = false) List<Integer> galleryPositions,
-            @RequestPart(value = "folder", required = false, defaultValue = "users") String folder) {
+            @RequestPart(value = "folder", required = false) String folder) {
         Long userId = extractUserId(currentUser);
         UpdateUserRequest enriched = enrichWithUploads(request, profilePicture, galleryFiles, galleryPositions, folder);
         return ResponseEntity.ok(userService.updateProfile(userId, enriched));
@@ -119,14 +120,13 @@ public class UserController {
                 @ApiResponse(responseCode = "200", description = "Perfil atualizado"),
                 @ApiResponse(responseCode = "400", description = "Validação", content = @Content)
             })
-    @PreAuthorize("hasAnyRole('CLUB_EMPLOYE','CLUB_ADMIN')")
     public ResponseEntity<UserProfileResponse> updateUserByIdWithUpload(
             @PathVariable Long userId,
             @Valid @RequestPart("data") UpdateUserRequest request,
             @RequestPart(value = "profilePicture", required = false) MultipartFile profilePicture,
             @RequestPart(value = "gallery", required = false) List<MultipartFile> galleryFiles,
             @RequestPart(value = "galleryPosition", required = false) List<Integer> galleryPositions,
-            @RequestPart(value = "folder", required = false, defaultValue = "users") String folder) {
+            @RequestPart(value = "folder", required = false) String folder) {
 
         UpdateUserRequest enriched = enrichWithUploads(request, profilePicture, galleryFiles, galleryPositions, folder);
         return ResponseEntity.ok(userService.updateProfile(userId, enriched));
