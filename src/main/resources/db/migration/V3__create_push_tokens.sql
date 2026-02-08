@@ -7,8 +7,7 @@ CREATE TABLE IF NOT EXISTS push_tokens (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     last_success_at TIMESTAMP NULL,
-    invalidated_at TIMESTAMP NULL,
-    CONSTRAINT fk_push_token_user FOREIGN KEY (user_id) REFERENCES usuarios(id)
+    invalidated_at TIMESTAMP NULL
 );
 
 CREATE INDEX idx_push_tokens_user_id ON push_tokens(user_id);
