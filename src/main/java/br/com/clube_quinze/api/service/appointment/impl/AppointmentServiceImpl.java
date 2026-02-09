@@ -106,6 +106,16 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.setStatus(AppointmentStatus.SCHEDULED);
 
         Appointment saved = appointmentRepository.save(appointment);
+        // best-effort push confirmation
+        try {
+            var data = new java.util.HashMap<String, Object>();
+            data.put("appointmentId", saved.getId());
+            data.put("scheduledAt", saved.getScheduledAt().toString());
+            pushNotificationService.sendToUser(saved.getClient().getId(), "SCHEDULED",
+                    "Agendamento confirmado",
+                    "Seu agendamento foi criado para " + saved.getScheduledAt().toString(), data);
+        } catch (Exception ignored) {
+        }
         return toAppointmentResponse(saved);
     }
 
@@ -130,6 +140,16 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.setStatus(AppointmentStatus.SCHEDULED);
 
         Appointment updated = appointmentRepository.save(appointment);
+        // best-effort push confirmation
+        try {
+            var data = new java.util.HashMap<String, Object>();
+            data.put("appointmentId", updated.getId());
+            data.put("scheduledAt", updated.getScheduledAt().toString());
+            pushNotificationService.sendToUser(updated.getClient().getId(), "RESCHEDULED",
+                    "Agendamento remarcado",
+                    "Seu agendamento foi remarcado para " + updated.getScheduledAt().toString(), data);
+        } catch (Exception ignored) {
+        }
         return toAppointmentResponse(updated);
     }
 
@@ -142,6 +162,15 @@ public class AppointmentServiceImpl implements AppointmentService {
             appointment.setNotes(request.notes());
         }
         Appointment updated = appointmentRepository.save(appointment);
+        // notify key status transitions
+        try {
+            if (request.status() == AppointmentStatus.CANCELED) {
+                var data = java.util.Map.<String, Object>of("appointmentId", updated.getId());
+                pushNotificationService.sendToUser(updated.getClient().getId(), "CANCELLED",
+                        "Agendamento cancelado", "Seu agendamento foi cancelado pelo clube.", data);
+            }
+        } catch (Exception ignored) {
+        }
         return toAppointmentResponse(updated);
     }
 

@@ -43,7 +43,7 @@ public class AppointmentNotificationScheduler {
         LocalDateTime windowEnd = now.plusMinutes(5);
 
         // For each offset compute appointments where scheduledAt - offset is in (now, windowEnd]
-        int[] offsetsHours = {24, 6, 3, 1};
+        int[] offsetsHours = {24, 6, 1};
         for (int h : offsetsHours) {
             LocalDateTime start = now.plusHours(h * -1).plusMinutes(0); // scheduledAt - h == now => scheduledAt == now + h
             LocalDateTime searchStart = now.plusSeconds(1);
