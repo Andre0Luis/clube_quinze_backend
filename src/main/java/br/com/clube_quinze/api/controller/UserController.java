@@ -98,7 +98,6 @@ public class UserController {
 
     @GetMapping("/{userId}")
     @Operation(summary = "Obter perfil por ID")
-    @PreAuthorize("hasAnyRole('CLUB_EMPLOYE','CLUB_ADMIN')")
     public ResponseEntity<UserProfileResponse> getUserById(@PathVariable Long userId) {
         return ResponseEntity.ok(userService.getProfile(userId));
     }
