@@ -14,20 +14,27 @@ import br.com.clube_quinze.api.model.payment.Plan;
 import br.com.clube_quinze.api.model.user.PasswordResetToken;
 import br.com.clube_quinze.api.model.user.RefreshToken;
 import br.com.clube_quinze.api.model.user.User;
+import br.com.clube_quinze.api.model.user.UserPreference;
 import br.com.clube_quinze.api.repository.PasswordResetTokenRepository;
 import br.com.clube_quinze.api.repository.PlanRepository;
 import br.com.clube_quinze.api.repository.RefreshTokenRepository;
+import br.com.clube_quinze.api.repository.UserPreferenceRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.security.JwtProperties;
 import br.com.clube_quinze.api.security.JwtTokenProvider;
+import br.com.clube_quinze.api.service.appointment.AppointmentScheduleSettings;
+import br.com.clube_quinze.api.service.appointment.RecurringAppointmentScheduler;
 import br.com.clube_quinze.api.service.auth.AuthService;
 import br.com.clube_quinze.api.service.notification.NotificationService;
 import java.time.Duration;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -39,6 +46,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AuthServiceImpl implements AuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthServiceImpl.class);
+
     private final AuthenticationManager authenticationManager;
     private final UserRepository userRepository;
     private final PlanRepository planRepository;
@@ -49,6 +58,8 @@ public class AuthServiceImpl implements AuthService {
     private final JwtProperties jwtProperties;
     private final Clock clock;
     private final NotificationService notificationService;
+    private final UserPreferenceRepository userPreferenceRepository;
+    private final RecurringAppointmentScheduler recurringAppointmentScheduler;
     private final long resetExpirationMinutes;
     private final String resetBaseUrl;
 
@@ -63,6 +74,8 @@ public class AuthServiceImpl implements AuthService {
             JwtProperties jwtProperties,
             Clock clock,
             NotificationService notificationService,
+            UserPreferenceRepository userPreferenceRepository,
+            RecurringAppointmentScheduler recurringAppointmentScheduler,
             @Value("${app.security.reset.expiration-minutes:30}") long resetExpirationMinutes,
             @Value("${app.security.reset.base-url:https://clubequinzeapp.cloud/reset-password}") String resetBaseUrl) {
         this.authenticationManager = authenticationManager;
@@ -75,6 +88,8 @@ public class AuthServiceImpl implements AuthService {
         this.jwtProperties = jwtProperties;
         this.clock = clock;
         this.notificationService = notificationService;
+        this.userPreferenceRepository = userPreferenceRepository;
+        this.recurringAppointmentScheduler = recurringAppointmentScheduler;
         this.resetExpirationMinutes = resetExpirationMinutes;
         this.resetBaseUrl = resetBaseUrl;
     }
@@ -105,6 +120,17 @@ public class AuthServiceImpl implements AuthService {
 
         // Envio de boas-vindas com credenciais (assíncrono)
         notificationService.notifyWelcome(savedUser.getEmail(), savedUser.getName(), request.password());
+
+        persistPreferredAppointmentTime(savedUser, request.preferredAppointmentTime());
+        try {
+            recurringAppointmentScheduler.scheduleForNewUser(
+                    savedUser,
+                    savedUser.getMembershipTier(),
+                    request.preferredAppointmentTime(),
+                    AppointmentScheduleSettings.DEFAULT_RECURRING_MONTHS);
+        } catch (Exception ex) {
+            log.warn("Falha ao criar agenda recorrente para o usuário {}", savedUser.getId(), ex);
+        }
 
         return issueTokensFor(savedUser);
     }
@@ -239,5 +265,16 @@ public class AuthServiceImpl implements AuthService {
         }
         String separator = base.contains("?") ? "&" : "?";
         return base + separator + "token=" + token;
+    }
+
+    private void persistPreferredAppointmentTime(User user, LocalTime preferredTime) {
+        if (preferredTime == null) {
+            return;
+        }
+        UserPreference preference = new UserPreference();
+        preference.setUser(user);
+        preference.setPreferenceKey(AppointmentScheduleSettings.DEFAULT_APPOINTMENT_TIME_PREFERENCE_KEY);
+        preference.setPreferenceValue(preferredTime.toString());
+        userPreferenceRepository.save(preference);
     }
 }

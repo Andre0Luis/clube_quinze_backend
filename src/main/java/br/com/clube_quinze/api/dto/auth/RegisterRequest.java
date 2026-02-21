@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.time.LocalTime;
 
 public record RegisterRequest(
         @NotBlank(message = "Nome é obrigatório")
@@ -26,5 +27,6 @@ public record RegisterRequest(
         @NotNull(message = "Tipo de membro é obrigatório")
         MembershipTier membershipTier,
 
+        LocalTime preferredAppointmentTime,
         Long planId) {
 }

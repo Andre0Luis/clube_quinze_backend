@@ -44,6 +44,9 @@ public class Appointment {
     @Column(name = "servico")
     private String serviceType;
 
+    @Column(name = "duration_minutes", nullable = false)
+    private Integer durationMinutes = 60;
+
     @Column(name = "criado_em", nullable = false)
     private LocalDateTime createdAt;
 
@@ -111,6 +114,14 @@ public class Appointment {
 
     public void setServiceType(String serviceType) {
         this.serviceType = serviceType;
+    }
+
+    public Integer getDurationMinutes() {
+        return durationMinutes;
+    }
+
+    public void setDurationMinutes(Integer durationMinutes) {
+        this.durationMinutes = durationMinutes;
     }
 
     public String getNotes() {

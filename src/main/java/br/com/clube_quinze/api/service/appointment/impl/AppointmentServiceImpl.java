@@ -15,6 +15,7 @@ import br.com.clube_quinze.api.model.enumeration.MembershipTier;
 import br.com.clube_quinze.api.model.user.User;
 import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
+import br.com.clube_quinze.api.service.appointment.AppointmentScheduleSettings;
 import br.com.clube_quinze.api.service.appointment.AppointmentService;
 import br.com.clube_quinze.api.util.PageUtils;
 import java.time.Clock;
@@ -37,9 +38,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AppointmentServiceImpl implements AppointmentService {
 
-    private static final LocalTime OPENING_TIME = LocalTime.of(9, 0);
-    private static final LocalTime CLOSING_TIME = LocalTime.of(21, 0);
-    private static final Duration SLOT_DURATION = Duration.ofMinutes(30);
+    private static final LocalTime OPENING_TIME = AppointmentScheduleSettings.OPENING_TIME;
+    private static final LocalTime CLOSING_TIME = AppointmentScheduleSettings.CLOSING_TIME;
+    private static final Duration SLOT_DURATION = AppointmentScheduleSettings.SLOT_DURATION;
 
     private final AppointmentRepository appointmentRepository;
     private final UserRepository userRepository;
@@ -104,6 +105,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.setServiceType(request.serviceType());
         appointment.setNotes(request.notes());
         appointment.setStatus(AppointmentStatus.SCHEDULED);
+        appointment.setDurationMinutes(resolveDuration(request));
 
         Appointment saved = appointmentRepository.save(appointment);
         // best-effort push confirmation
@@ -322,6 +324,12 @@ public class AppointmentServiceImpl implements AppointmentService {
                 appointment.getAppointmentTier(),
                 appointment.getStatus(),
                 appointment.getServiceType(),
-                appointment.getNotes());
+                appointment.getNotes(),
+                appointment.getDurationMinutes());
+    }
+
+    private int resolveDuration(AppointmentRequest request) {
+        Integer candidate = request.durationMinutes();
+        return candidate == null ? 60 : candidate;
     }
 }

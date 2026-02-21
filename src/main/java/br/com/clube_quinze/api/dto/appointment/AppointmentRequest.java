@@ -18,5 +18,6 @@ public record AppointmentRequest(
 
         String serviceType,
 
-        String notes) {
+        String notes,
+        Integer durationMinutes) {
 }

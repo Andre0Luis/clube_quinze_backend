@@ -56,13 +56,14 @@ public class AppointmentController {
         ClubeQuinzeUserDetails user = requireAuthenticated(currentUser);
         boolean privileged = isPrivileged(user);
         AppointmentRequest normalizedRequest = privileged
-                ? request
-                : new AppointmentRequest(
-                        user.getId(),
-                        request.scheduledAt(),
-                        request.appointmentTier(),
-                        request.serviceType(),
-                        request.notes());
+            ? request
+            : new AppointmentRequest(
+                user.getId(),
+                request.scheduledAt(),
+                request.appointmentTier(),
+                request.serviceType(),
+                request.notes(),
+                request.durationMinutes());
         AppointmentResponse response =
                 appointmentService.schedule(user.getId(), privileged, normalizedRequest);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);

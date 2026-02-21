@@ -11,5 +11,6 @@ public record AppointmentResponse(
         MembershipTier appointmentTier,
         AppointmentStatus status,
         String serviceType,
-        String notes) {
+        String notes,
+        Integer durationMinutes) {
 }
