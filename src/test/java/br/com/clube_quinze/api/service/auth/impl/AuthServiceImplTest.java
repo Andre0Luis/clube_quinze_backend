@@ -80,8 +80,8 @@ class AuthServiceImplTest {
                 jwtProperties,
                 clock,
                 notificationService,
-            userPreferenceRepository,
-            recurringAppointmentScheduler,
+                userPreferenceRepository,
+                recurringAppointmentScheduler,
                 30,
                 "https://clubequinzeapp.cloud/reset-password"
         );
