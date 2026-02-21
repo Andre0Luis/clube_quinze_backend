@@ -1,6 +1,7 @@
 package br.com.clube_quinze.api.model.enumeration;
 
 public enum MembershipTier {
-    CLUB_15,
+    QUINZE_STANDARD,
+    QUINZE_PREMIUM,
     QUINZE_SELECT
 }

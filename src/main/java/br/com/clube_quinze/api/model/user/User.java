@@ -50,7 +50,7 @@ public class User {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "tipo_membro")
-    private MembershipTier membershipTier = MembershipTier.CLUB_15;
+    private MembershipTier membershipTier = MembershipTier.QUINZE_STANDARD;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false)

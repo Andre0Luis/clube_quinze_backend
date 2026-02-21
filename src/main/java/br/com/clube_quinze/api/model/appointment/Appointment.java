@@ -35,7 +35,7 @@ public class Appointment {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "tipo_atendimento", nullable = false)
-    private MembershipTier appointmentTier = MembershipTier.CLUB_15;
+    private MembershipTier appointmentTier = MembershipTier.QUINZE_STANDARD;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)

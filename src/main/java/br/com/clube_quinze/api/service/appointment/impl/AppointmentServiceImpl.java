@@ -57,7 +57,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Override
     @Transactional(readOnly = true)
     public AvailableSlotResponse getAvailableSlots(LocalDate date, MembershipTier tier) {
-        MembershipTier effectiveTier = tier == null ? MembershipTier.CLUB_15 : tier;
+        MembershipTier effectiveTier = tier == null ? MembershipTier.QUINZE_STANDARD : tier;
         LocalDate today = LocalDate.now(clock);
         if (date.isBefore(today)) {
             return new AvailableSlotResponse(date, effectiveTier, List.of());

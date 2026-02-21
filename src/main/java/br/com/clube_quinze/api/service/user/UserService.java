@@ -7,7 +7,7 @@ import java.util.List;
 
 public interface UserService {
 
-    List<UserSummary> listMembers(String planFilter);
+    List<UserSummary> listMembers(String membershipTierFilter);
 
     UserProfileResponse getProfile(Long userId);
 

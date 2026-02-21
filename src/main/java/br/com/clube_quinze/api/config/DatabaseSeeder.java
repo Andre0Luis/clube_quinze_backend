@@ -61,7 +61,7 @@ public class DatabaseSeeder implements CommandLineRunner {
         admin.setEmail("aluis283@gmail.com");
         admin.setPasswordHash(passwordEncoder.encode("luizinho@01"));
         admin.setRole(RoleType.CLUB_ADMIN);
-        admin.setMembershipTier(MembershipTier.CLUB_15);
+        admin.setMembershipTier(MembershipTier.QUINZE_STANDARD);
         admin.setPlan(defaultPlan);
         admin.setActive(true);
         User saved = userRepository.save(admin);

@@ -15,6 +15,7 @@ import br.com.clube_quinze.api.model.payment.Plan;
 import br.com.clube_quinze.api.model.user.User;
 import br.com.clube_quinze.api.model.user.UserGalleryPhoto;
 import br.com.clube_quinze.api.model.user.UserPreference;
+import br.com.clube_quinze.api.model.enumeration.MembershipTier;
 import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.PlanRepository;
 import br.com.clube_quinze.api.repository.UserPreferenceRepository;
@@ -62,11 +63,12 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<UserSummary> listMembers(String planFilter) {
-        String normalizedFilter = normalizeOptional(planFilter);
-        List<User> users = normalizedFilter == null
+    public List<UserSummary> listMembers(String membershipTierFilter) {
+        String normalizedFilter = normalizeOptional(membershipTierFilter);
+        MembershipTier tier = parseMembershipTier(normalizedFilter);
+        List<User> users = tier == null
                 ? userRepository.findAllByOrderByNameAsc()
-                : userRepository.findByPlan_NameContainingIgnoreCaseOrderByNameAsc(normalizedFilter);
+                : userRepository.findByMembershipTierOrderByNameAsc(tier);
         return users.stream()
                 .map(this::toUserSummary)
                 .toList();
@@ -251,5 +253,16 @@ public class UserServiceImpl implements UserService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private MembershipTier parseMembershipTier(String rawFilter) {
+        if (rawFilter == null) {
+            return null;
+        }
+        try {
+            return MembershipTier.valueOf(rawFilter.toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 }

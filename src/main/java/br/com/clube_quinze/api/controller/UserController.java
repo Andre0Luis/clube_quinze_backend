@@ -60,11 +60,11 @@ public class UserController {
     }
 
     @GetMapping
-    @Operation(summary = "Listar membros cadastrados", description = "Retorna todos os usuários ativos e permite filtrar por plano (texto parcial, case-insensitive, ex: 'standard', 'premium', 'select').")
+    @Operation(summary = "Listar membros cadastrados", description = "Retorna todos os usuários ativos e permite filtrar por membership tier (ex: 'QUINZE_STANDARD', 'QUINZE_PREMIUM', 'QUINZE_SELECT').")
     @PreAuthorize("hasAnyRole('CLUB_EMPLOYE','CLUB_ADMIN')")
     public ResponseEntity<List<UserSummary>> listUsers(
-            @RequestParam(value = "plan", required = false) String plan) {
-        return ResponseEntity.ok(userService.listMembers(plan));
+            @RequestParam(value = "membershipTier", required = false) String membershipTier) {
+        return ResponseEntity.ok(userService.listMembers(membershipTier));
     }
 
     @PutMapping("/me")

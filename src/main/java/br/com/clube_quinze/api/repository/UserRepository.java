@@ -1,5 +1,6 @@
 package br.com.clube_quinze.api.repository;
 
+import br.com.clube_quinze.api.model.enumeration.MembershipTier;
 import br.com.clube_quinze.api.model.enumeration.RoleType;
 import br.com.clube_quinze.api.model.user.User;
 import java.util.List;
@@ -15,6 +16,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 	List<User> findAllByOrderByNameAsc();
 
 	List<User> findByPlan_NameContainingIgnoreCaseOrderByNameAsc(String planName);
+
+	List<User> findByMembershipTierOrderByNameAsc(MembershipTier membershipTier);
 
 	List<User> findByRole(RoleType role);
 }
