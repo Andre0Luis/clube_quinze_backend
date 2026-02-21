@@ -1,0 +1,2 @@
+-- keep seeds aligned without altering historical V5 checksum
+-- add any new seed entries here; currently no-op placeholder
