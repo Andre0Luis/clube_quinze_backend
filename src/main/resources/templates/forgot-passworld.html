@@ -1,0 +1,39 @@
+
+
+
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org" lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Recuperacao de senha</title>
+  </head>
+  <body style="margin:0;padding:0;background-color:#f6f4ef;font-family:Arial,Helvetica,sans-serif;color:#1f1f1f;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f6f4ef;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="width:600px;max-width:100%;background-color:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e9e4d8;">
+            <tr>
+              <td style="padding:28px 32px;background-color:#132d1a;color:#f6f4ef;">
+                <div style="font-size:20px;letter-spacing:0.6px;text-transform:uppercase;">Clube Quinze</div>
+                <div style="font-size:26px;font-weight:700;margin-top:8px;">Recuperacao de senha</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 32px;">
+                <p style="margin:0 0 12px 0;font-size:16px;">Ola <span th:text="${name}">nome</span>,</p>
+                <p style="margin:0 0 16px 0;font-size:16px;">Recebemos uma solicitacao para redefinir sua senha. Para continuar, clique no botao abaixo:</p>
+                <div style="margin:20px 0;">
+                  <a th:href="${resetLink}" href="https://clubequinzeapp.cloud" style="display:inline-block;background:#132d1a;color:#f6f4ef;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:600;font-size:14px;">Redefinir senha</a>
+                </div>
+                <p style="margin:0 0 8px 0;font-size:14px;color:#5a564f;">Se o botao nao funcionar, copie e cole o link abaixo no navegador:</p>
+                <p style="margin:0;font-size:12px;color:#6b655c;word-break:break-all;" th:text="${resetLink}">https://clubequinzeapp.cloud/reset</p>
+                <p style="margin:16px 0 0 0;font-size:12px;color:#6b655c;">Se voce nao solicitou este email, ignore esta mensagem.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

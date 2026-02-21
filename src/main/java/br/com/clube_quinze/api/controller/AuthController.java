@@ -1,9 +1,11 @@
 package br.com.clube_quinze.api.controller;
 
 import br.com.clube_quinze.api.dto.auth.AuthResponse;
+import br.com.clube_quinze.api.dto.auth.ForgotPasswordRequest;
 import br.com.clube_quinze.api.dto.auth.LoginRequest;
 import br.com.clube_quinze.api.dto.auth.RefreshTokenRequest;
 import br.com.clube_quinze.api.dto.auth.RegisterRequest;
+import br.com.clube_quinze.api.dto.auth.ResetPasswordRequest;
 import br.com.clube_quinze.api.service.auth.AuthService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -44,6 +46,18 @@ public class AuthController {
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(@Valid @RequestBody RefreshTokenRequest request) {
         authService.logout(request);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        authService.requestPasswordReset(request);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request);
         return ResponseEntity.noContent().build();
     }
 }

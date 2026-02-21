@@ -1,16 +1,20 @@
 package br.com.clube_quinze.api.service.auth.impl;
 
 import br.com.clube_quinze.api.dto.auth.AuthResponse;
+import br.com.clube_quinze.api.dto.auth.ForgotPasswordRequest;
 import br.com.clube_quinze.api.dto.auth.LoginRequest;
 import br.com.clube_quinze.api.dto.auth.RefreshTokenRequest;
 import br.com.clube_quinze.api.dto.auth.RegisterRequest;
+import br.com.clube_quinze.api.dto.auth.ResetPasswordRequest;
 import br.com.clube_quinze.api.exception.BusinessException;
 import br.com.clube_quinze.api.exception.ResourceNotFoundException;
 import br.com.clube_quinze.api.exception.UnauthorizedException;
 import br.com.clube_quinze.api.model.enumeration.RoleType;
 import br.com.clube_quinze.api.model.payment.Plan;
+import br.com.clube_quinze.api.model.user.PasswordResetToken;
 import br.com.clube_quinze.api.model.user.RefreshToken;
 import br.com.clube_quinze.api.model.user.User;
+import br.com.clube_quinze.api.repository.PasswordResetTokenRepository;
 import br.com.clube_quinze.api.repository.PlanRepository;
 import br.com.clube_quinze.api.repository.RefreshTokenRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
@@ -18,10 +22,13 @@ import br.com.clube_quinze.api.security.JwtProperties;
 import br.com.clube_quinze.api.security.JwtTokenProvider;
 import br.com.clube_quinze.api.service.auth.AuthService;
 import br.com.clube_quinze.api.service.notification.NotificationService;
+import java.time.Duration;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.AuthenticationException;
@@ -36,31 +43,40 @@ public class AuthServiceImpl implements AuthService {
     private final UserRepository userRepository;
     private final PlanRepository planRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtProperties jwtProperties;
     private final Clock clock;
     private final NotificationService notificationService;
+    private final long resetExpirationMinutes;
+    private final String resetBaseUrl;
 
     public AuthServiceImpl(
             AuthenticationManager authenticationManager,
             UserRepository userRepository,
             PlanRepository planRepository,
             RefreshTokenRepository refreshTokenRepository,
+            PasswordResetTokenRepository passwordResetTokenRepository,
             PasswordEncoder passwordEncoder,
             JwtTokenProvider jwtTokenProvider,
             JwtProperties jwtProperties,
             Clock clock,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            @Value("${app.security.reset.expiration-minutes:30}") long resetExpirationMinutes,
+            @Value("${app.security.reset.base-url:https://clubequinzeapp.cloud/reset-password}") String resetBaseUrl) {
         this.authenticationManager = authenticationManager;
         this.userRepository = userRepository;
         this.planRepository = planRepository;
         this.refreshTokenRepository = refreshTokenRepository;
+        this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
         this.jwtProperties = jwtProperties;
         this.clock = clock;
         this.notificationService = notificationService;
+        this.resetExpirationMinutes = resetExpirationMinutes;
+        this.resetBaseUrl = resetBaseUrl;
     }
 
     @Override
@@ -147,6 +163,56 @@ public class AuthServiceImpl implements AuthService {
         });
     }
 
+    @Override
+    @Transactional
+    public void requestPasswordReset(ForgotPasswordRequest request) {
+        Optional<User> maybeUser = userRepository.findByEmail(request.email());
+        if (maybeUser.isEmpty()) {
+            return;
+        }
+
+        User user = maybeUser.get();
+        if (!user.isActive()) {
+            return;
+        }
+
+        passwordResetTokenRepository.deleteByUserId(user.getId());
+
+        String tokenValue = UUID.randomUUID().toString();
+        PasswordResetToken token = new PasswordResetToken();
+        token.setToken(tokenValue);
+        token.setUser(user);
+        token.setCreatedAt(clock.instant());
+        token.setExpiresAt(clock.instant().plus(Duration.ofMinutes(resetExpirationMinutes)));
+        passwordResetTokenRepository.save(token);
+
+        String resetLink = buildResetLink(tokenValue);
+        notificationService.notifyPasswordReset(user.getEmail(), user.getName(), resetLink);
+    }
+
+    @Override
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        PasswordResetToken token = passwordResetTokenRepository.findByToken(request.token())
+                .orElseThrow(() -> new BusinessException("Token invalido"));
+
+        if (token.getUsedAt() != null) {
+            throw new BusinessException("Token ja utilizado");
+        }
+        if (token.getExpiresAt().isBefore(clock.instant())) {
+            throw new BusinessException("Token expirado");
+        }
+
+        User user = token.getUser();
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
+
+        token.setUsedAt(clock.instant());
+        passwordResetTokenRepository.save(token);
+
+        refreshTokenRepository.deleteByUserId(user.getId());
+    }
+
     private AuthResponse issueTokensFor(User user) {
         refreshTokenRepository.deleteByUserId(user.getId());
 
@@ -164,5 +230,14 @@ public class AuthServiceImpl implements AuthService {
 
     private Instant calculateRefreshExpiration() {
         return clock.instant().plus(jwtProperties.refreshTokenTtl());
+    }
+
+    private String buildResetLink(String token) {
+        String base = resetBaseUrl == null ? "" : resetBaseUrl.trim();
+        if (base.isBlank()) {
+            base = "https://clubequinzeapp.cloud/reset-password";
+        }
+        String separator = base.contains("?") ? "&" : "?";
+        return base + separator + "token=" + token;
     }
 }

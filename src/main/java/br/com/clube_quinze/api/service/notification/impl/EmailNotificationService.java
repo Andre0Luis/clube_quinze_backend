@@ -1,15 +1,19 @@
 package br.com.clube_quinze.api.service.notification.impl;
 
 import br.com.clube_quinze.api.service.notification.NotificationService;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.mail.MailException;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.thymeleaf.TemplateEngine;
+import org.thymeleaf.context.Context;
 
 @Service
 @Primary
@@ -19,11 +23,14 @@ public class EmailNotificationService implements NotificationService {
 
     private final JavaMailSender mailSender;
     private final String from;
+    private final TemplateEngine templateEngine;
 
     public EmailNotificationService(JavaMailSender mailSender,
-                                    @Value("${app.mail.from:no-reply@clubequinzeapp.cloud}") String from) {
+                                    @Value("${app.mail.from:no-reply@clubequinzeapp.cloud}") String from,
+                                    TemplateEngine templateEngine) {
         this.mailSender = mailSender;
         this.from = from;
+        this.templateEngine = templateEngine;
     }
 
     @Override
@@ -36,26 +43,49 @@ public class EmailNotificationService implements NotificationService {
     @Override
     @Async("asyncExecutor")
     public void notifyWelcome(String email, String name, String rawPassword) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(email);
-        message.setFrom(from);
-        message.setSubject("Bem-vindo ao Clube Quinze");
-        message.setText(buildWelcomeBody(name, email, rawPassword));
+        Context context = new Context();
+        context.setVariable("name", name);
+        context.setVariable("email", email);
+        context.setVariable("rawPassword", rawPassword);
+        String html = templateEngine.process("welcome", context);
+        String subject = "Bem-vindo ao Clube Quinze";
         try {
-            mailSender.send(message);
+            sendHtml(email, subject, html);
             log.info("[async-email] Bem-vindo enviado para {}", email);
         } catch (MailException ex) {
             log.error("Falha ao enviar email de boas-vindas para {}: {}", email, ex.getMessage());
         }
     }
 
-    private String buildWelcomeBody(String name, String email, String rawPassword) {
-        return "Olá " + (name != null ? name : "") + ",\n\n" +
-                "Bem-vindo ao Clube Quinze!\n" +
-                "Seu acesso:\n" +
-                "- Email: " + email + "\n" +
-                "- Senha: " + rawPassword + "\n\n" +
-                "Recomendamos alterar a senha após o primeiro login.\n\n" +
-                "Equipe Clube Quinze";
+    @Override
+    @Async("asyncExecutor")
+    public void notifyPasswordReset(String email, String name, String resetLink) {
+        Context context = new Context();
+        context.setVariable("name", name);
+        context.setVariable("resetLink", resetLink);
+        String html = templateEngine.process("forgot-passworld", context);
+        String subject = "Recuperacao de senha";
+        try {
+            sendHtml(email, subject, html);
+            log.info("[async-email] Reset de senha enviado para {}", email);
+        } catch (MailException ex) {
+            log.error("Falha ao enviar reset de senha para {}: {}", email, ex.getMessage());
+        }
+    }
+
+    private void sendHtml(String to, String subject, String html) {
+        MimeMessage message = mailSender.createMimeMessage();
+        try {
+            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
+            helper.setTo(to);
+            helper.setFrom(from);
+            helper.setSubject(subject);
+            helper.setText(html, true);
+            mailSender.send(message);
+        } catch (MessagingException ex) {
+            throw new MailException("Falha ao montar email HTML") {
+                private static final long serialVersionUID = 1L;
+            };
+        }
     }
 }

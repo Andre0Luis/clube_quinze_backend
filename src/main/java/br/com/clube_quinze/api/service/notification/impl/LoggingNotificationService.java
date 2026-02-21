@@ -23,4 +23,10 @@ public class LoggingNotificationService implements NotificationService {
     public void notifyWelcome(String email, String name, String rawPassword) {
         log.info("[async] Bem-vindo enviado para email={} name={} (senha não logada)", email, name);
     }
+
+    @Override
+    @Async("asyncExecutor")
+    public void notifyPasswordReset(String email, String name, String resetLink) {
+        log.info("[async] Reset de senha enviado para email={} name={}", email, name);
+    }
 }
