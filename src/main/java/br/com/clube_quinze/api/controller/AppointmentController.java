@@ -69,6 +69,16 @@ public class AppointmentController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @GetMapping("/{appointmentId}")
+    public ResponseEntity<AppointmentResponse> getAppointment(
+            @PathVariable Long appointmentId,
+            @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser) {
+        ClubeQuinzeUserDetails user = requireAuthenticated(currentUser);
+        boolean privileged = isPrivileged(user);
+        AppointmentResponse response = appointmentService.getAppointment(appointmentId, user.getId(), privileged);
+        return ResponseEntity.ok(response);
+    }
+
     @PutMapping("/{appointmentId}/reschedule")
     public ResponseEntity<AppointmentResponse> reschedule(
             @PathVariable Long appointmentId,

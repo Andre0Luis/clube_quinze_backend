@@ -217,6 +217,14 @@ public class AppointmentServiceImpl implements AppointmentService {
         return searchAppointments(status, clientId, startDate, endDate, page, size);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public AppointmentResponse getAppointment(Long appointmentId, Long actorId, boolean privileged) {
+        Appointment appointment = findAppointment(appointmentId);
+        enforceOwnership(appointment, actorId, privileged);
+        return toAppointmentResponse(appointment);
+    }
+
     private PageResponse<AppointmentResponse> searchAppointments(
             AppointmentStatus status,
             Long clientId,

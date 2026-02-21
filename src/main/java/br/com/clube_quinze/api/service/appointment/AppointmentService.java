@@ -22,6 +22,8 @@ public interface AppointmentService {
 
     void cancel(Long appointmentId, Long actorId, boolean privileged);
 
+    AppointmentResponse getAppointment(Long appointmentId, Long actorId, boolean privileged);
+
     PageResponse<AppointmentResponse> getAppointmentsForUser(
             Long userId,
             AppointmentStatus status,
