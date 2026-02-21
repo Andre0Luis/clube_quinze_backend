@@ -18,10 +18,12 @@ import br.com.clube_quinze.api.model.user.User;
 import br.com.clube_quinze.api.repository.PasswordResetTokenRepository;
 import br.com.clube_quinze.api.repository.PlanRepository;
 import br.com.clube_quinze.api.repository.RefreshTokenRepository;
+import br.com.clube_quinze.api.repository.UserPreferenceRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.security.JwtProperties;
 import br.com.clube_quinze.api.security.JwtTokenProvider;
 import br.com.clube_quinze.api.service.notification.NotificationService;
+import br.com.clube_quinze.api.service.appointment.RecurringAppointmentScheduler;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -56,6 +58,10 @@ class AuthServiceImplTest {
     private JwtProperties jwtProperties;
     @Mock
     private NotificationService notificationService;
+    @Mock
+    private UserPreferenceRepository userPreferenceRepository;
+    @Mock
+    private RecurringAppointmentScheduler recurringAppointmentScheduler;
 
     private Clock clock;
     private AuthServiceImpl subject;
@@ -74,6 +80,8 @@ class AuthServiceImplTest {
                 jwtProperties,
                 clock,
                 notificationService,
+            userPreferenceRepository,
+            recurringAppointmentScheduler,
                 30,
                 "https://clubequinzeapp.cloud/reset-password"
         );

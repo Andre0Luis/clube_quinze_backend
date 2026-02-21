@@ -174,7 +174,8 @@ public class UserServiceImpl implements UserService {
                 appointment.getAppointmentTier(),
                 appointment.getStatus(),
                 appointment.getServiceType(),
-                appointment.getNotes());
+                appointment.getNotes(),
+                appointment.getDurationMinutes());
     }
 
     private PreferenceResponse toPreferenceResponse(UserPreference preference) {
