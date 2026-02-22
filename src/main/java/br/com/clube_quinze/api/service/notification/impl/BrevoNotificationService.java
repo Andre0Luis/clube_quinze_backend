@@ -1,51 +1,58 @@
 package br.com.clube_quinze.api.service.notification.impl;
 
 import br.com.clube_quinze.api.service.notification.NotificationService;
-import com.mailersend.sdk.MailerSend;
-import com.mailersend.sdk.MailerSendResponse;
-import com.mailersend.sdk.emails.Email;
-import com.mailersend.sdk.exceptions.MailerSendException;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestTemplate;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 
 @Service
-@ConditionalOnProperty(prefix = "app.mailer-send", name = "enabled", havingValue = "true")
-public class MailerSendNotificationService implements NotificationService {
+@ConditionalOnProperty(prefix = "app.brevo", name = "enabled", havingValue = "true")
+public class BrevoNotificationService implements NotificationService {
 
-    private static final Logger log = LoggerFactory.getLogger(MailerSendNotificationService.class);
+    private static final Logger log = LoggerFactory.getLogger(BrevoNotificationService.class);
     private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<[^>]+>");
 
     private final TemplateEngine templateEngine;
-    private final MailerSend mailerSend;
+    private final RestTemplate restTemplate;
+    private final String apiKey;
+    private final String baseUrl;
     private final String fromName;
     private final String fromEmail;
 
-    public MailerSendNotificationService(TemplateEngine templateEngine,
-                                         @Value("${app.mailer-send.from-name:Clube Quinze}") String fromName,
-                                         @Value("${app.mail.from:no-reply@clubequinzeapp.cloud}") String fromEmail,
-                                         @Value("${app.mailer-send.token}") String token) {
-        if (!StringUtils.hasText(token)) {
-            throw new IllegalStateException("app.mailer-send.token must be set when MailerSend is enabled");
+    public BrevoNotificationService(TemplateEngine templateEngine,
+                                    @Value("${app.mail.from-name:Clube Quinze}") String fromName,
+                                    @Value("${app.mail.from:no-reply@clubequinzeapp.cloud}") String fromEmail,
+                                    @Value("${app.brevo.api-key}") String apiKey,
+                                    @Value("${app.brevo.base-url:https://api.brevo.com}") String baseUrl) {
+        if (!StringUtils.hasText(apiKey)) {
+            throw new IllegalStateException("app.brevo.api-key must be set when Brevo is enabled");
         }
         this.templateEngine = templateEngine;
         this.fromName = fromName;
         this.fromEmail = fromEmail;
-        this.mailerSend = new MailerSend();
-        this.mailerSend.setToken(token);
+        this.apiKey = apiKey;
+        this.baseUrl = baseUrl;
+        this.restTemplate = new RestTemplate();
     }
 
     @Override
     @Async("asyncExecutor")
     public void notifyFeedbackReceived(Long userId, Long appointmentId, Integer rating) {
-        log.info("[async-mailersend] Feedback user={} appointment={} rating={}", userId, appointmentId, rating);
+        log.info("[async-brevo] Feedback user={} appointment={} rating={}", userId, appointmentId, rating);
     }
 
     @Override
@@ -72,17 +79,24 @@ public class MailerSendNotificationService implements NotificationService {
     }
 
     private void sendEmail(String toEmail, String toName, String subject, String html) {
-        Email email = new Email();
-        email.setFrom(fromName, fromEmail);
-        email.addRecipient(StringUtils.hasText(toName) ? toName : toEmail, toEmail);
-        email.setSubject(subject);
-        email.setHtml(html);
-        email.setPlain(toPlainText(html));
+        String url = baseUrl + "/v3/smtp/email";
+        Map<String, Object> payload = Map.of(
+                "sender", Map.of("name", fromName, "email", fromEmail),
+                "to", List.of(Map.of("name", StringUtils.hasText(toName) ? toName : toEmail, "email", toEmail)),
+                "subject", subject,
+                "htmlContent", html,
+                "textContent", toPlainText(html)
+        );
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("api-key", apiKey);
+
         try {
-            MailerSendResponse response = mailerSend.emails().send(email);
-            log.info("[async-mailersend] enviado para {} (messageId={})", toEmail, response.messageId);
-        } catch (MailerSendException ex) {
-            log.error("[async-mailersend] falha ao enviar para {}: code={} message={}", toEmail, ex.code, ex.message, ex);
+            restTemplate.postForEntity(url, new HttpEntity<>(payload, headers), String.class);
+            log.info("[async-brevo] enviado para {}", toEmail);
+        } catch (RestClientException ex) {
+            log.error("[async-brevo] falha ao enviar para {}: {}", toEmail, ex.getMessage(), ex);
         }
     }
 

@@ -16,7 +16,7 @@ import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 
 @Service
-@ConditionalOnProperty(prefix = "app.mailer-send", name = "enabled", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "app.brevo", name = "enabled", havingValue = "false", matchIfMissing = true)
 public class EmailNotificationService implements NotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(EmailNotificationService.class);

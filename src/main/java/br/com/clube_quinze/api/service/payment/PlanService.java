@@ -6,6 +6,8 @@ import br.com.clube_quinze.api.exception.BusinessException;
 import br.com.clube_quinze.api.exception.ResourceNotFoundException;
 import br.com.clube_quinze.api.model.payment.Plan;
 import br.com.clube_quinze.api.repository.PlanRepository;
+import java.util.List;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,6 +47,21 @@ public class PlanService {
         existing.setDurationMonths(request.getDurationMonths());
 
         return toResponse(existing);
+    }
+
+    @Transactional(readOnly = true)
+    public List<PlanResponse> listPlans() {
+        return planRepository.findAll(Sort.by("name").ascending())
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PlanResponse getPlan(Long id) {
+        Plan plan = planRepository.findById(id).orElseThrow(() ->
+                new ResourceNotFoundException("Plano não encontrado"));
+        return toResponse(plan);
     }
 
     @Transactional

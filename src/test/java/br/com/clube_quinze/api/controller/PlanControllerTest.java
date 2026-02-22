@@ -12,6 +12,7 @@ import br.com.clube_quinze.api.dto.payment.PlanRequest;
 import br.com.clube_quinze.api.dto.payment.PlanResponse;
 import br.com.clube_quinze.api.service.payment.PlanService;
 import java.math.BigDecimal;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
@@ -65,6 +66,30 @@ class PlanControllerTest {
 
         then(planService).should().updatePlan(eq(1L), any(PlanRequest.class));
         assertEquals(HttpStatus.OK, entity.getStatusCode());
+    }
+
+    @Test
+    void listPlansShouldReturnPlans() {
+        given(planService.listPlans()).willReturn(List.of(response));
+
+        ResponseEntity<List<PlanResponse>> entity = planController.listPlans();
+
+        then(planService).should().listPlans();
+        assertEquals(HttpStatus.OK, entity.getStatusCode());
+        assertNotNull(entity.getBody());
+        assertEquals(1, entity.getBody().size());
+    }
+
+    @Test
+    void getPlanShouldReturnPlan() {
+        given(planService.getPlan(1L)).willReturn(response);
+
+        ResponseEntity<PlanResponse> entity = planController.getPlan(1L);
+
+        then(planService).should().getPlan(1L);
+        assertEquals(HttpStatus.OK, entity.getStatusCode());
+        assertNotNull(entity.getBody());
+        assertEquals(1L, entity.getBody().getId());
     }
 
     @Test
