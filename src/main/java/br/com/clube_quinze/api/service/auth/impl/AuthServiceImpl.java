@@ -121,16 +121,16 @@ public class AuthServiceImpl implements AuthService {
         // Envio de boas-vindas com credenciais (assíncrono)
         notificationService.notifyWelcome(savedUser.getEmail(), savedUser.getName(), request.password());
 
-        persistPreferredAppointmentTime(savedUser, request.preferredAppointmentTime());
-        try {
-            recurringAppointmentScheduler.scheduleForNewUser(
-                    savedUser,
-                    savedUser.getMembershipTier(),
-                    request.preferredAppointmentTime(),
-                    AppointmentScheduleSettings.DEFAULT_RECURRING_MONTHS);
-        } catch (Exception ex) {
-            log.warn("Falha ao criar agenda recorrente para o usuário {}", savedUser.getId(), ex);
-        }
+        //persistPreferredAppointmentTime(savedUser, request.preferredAppointmentTime());
+        // try {
+        //     recurringAppointmentScheduler.scheduleForNewUser(
+        //             savedUser,
+        //             savedUser.getMembershipTier(),
+        //             request.preferredAppointmentTime(),
+        //             AppointmentScheduleSettings.DEFAULT_RECURRING_MONTHS);
+        // } catch (Exception ex) {
+        //     log.warn("Falha ao criar agenda recorrente para o usuário {}", savedUser.getId(), ex);
+        // }
 
         return issueTokensFor(savedUser);
     }
