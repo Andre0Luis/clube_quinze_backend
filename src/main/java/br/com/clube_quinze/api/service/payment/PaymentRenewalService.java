@@ -8,6 +8,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +26,7 @@ public class PaymentRenewalService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "paymentRenewals", key = "#windowDays")
     public List<PlanRenewalCandidateResponse> listUpcomingRenewals(int windowDays) {
         LocalDate start = LocalDate.now(clock);
         LocalDate end = start.plusDays(windowDays);

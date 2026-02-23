@@ -7,6 +7,9 @@ import br.com.clube_quinze.api.exception.ResourceNotFoundException;
 import br.com.clube_quinze.api.model.payment.Plan;
 import br.com.clube_quinze.api.repository.PlanRepository;
 import java.util.List;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +24,10 @@ public class PlanService {
     }
 
     @Transactional
+        @Caching(evict = {
+            @CacheEvict(cacheNames = "planList", allEntries = true),
+            @CacheEvict(cacheNames = "planById", allEntries = true)
+        })
     public PlanResponse createPlan(PlanRequest request) {
         ensureUniqueName(request.getName(), null);
 
@@ -35,6 +42,10 @@ public class PlanService {
     }
 
     @Transactional
+        @Caching(evict = {
+            @CacheEvict(cacheNames = "planList", allEntries = true),
+            @CacheEvict(cacheNames = "planById", key = "#id")
+        })
     public PlanResponse updatePlan(Long id, PlanRequest request) {
         Plan existing = planRepository.findById(id).orElseThrow(() ->
                 new ResourceNotFoundException("Plano não encontrado"));
@@ -50,6 +61,7 @@ public class PlanService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "planList")
     public List<PlanResponse> listPlans() {
         return planRepository.findAll(Sort.by("name").ascending())
                 .stream()
@@ -58,6 +70,7 @@ public class PlanService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "planById", key = "#id")
     public PlanResponse getPlan(Long id) {
         Plan plan = planRepository.findById(id).orElseThrow(() ->
                 new ResourceNotFoundException("Plano não encontrado"));
@@ -65,6 +78,10 @@ public class PlanService {
     }
 
     @Transactional
+        @Caching(evict = {
+            @CacheEvict(cacheNames = "planList", allEntries = true),
+            @CacheEvict(cacheNames = "planById", key = "#id")
+        })
     public void deletePlan(Long id) {
         Plan existing = planRepository.findById(id).orElseThrow(() ->
                 new ResourceNotFoundException("Plano não encontrado"));

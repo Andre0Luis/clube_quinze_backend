@@ -33,6 +33,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -60,6 +63,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "userProfile", key = "#userId")
     public UserProfileResponse getProfile(Long userId) {
         User user = findUser(userId);
         return buildUserProfileResponse(user);
@@ -67,6 +71,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "userList", key = "#membershipTierFilter")
     public List<UserSummary> listMembers(String membershipTierFilter) {
         String normalizedFilter = normalizeOptional(membershipTierFilter);
         MembershipTier tier = parseMembershipTier(normalizedFilter);
@@ -80,6 +85,11 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
+        @Caching(evict = {
+            @CacheEvict(cacheNames = "userProfile", key = "#userId"),
+            @CacheEvict(cacheNames = "userList", allEntries = true),
+            @CacheEvict(cacheNames = "paymentRenewals", allEntries = true)
+        })
     public UserProfileResponse updateProfile(Long userId, UpdateUserRequest request) {
         User user = findUser(userId);
 
@@ -111,6 +121,11 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
+        @Caching(evict = {
+            @CacheEvict(cacheNames = "userProfile", key = "#userId"),
+            @CacheEvict(cacheNames = "userList", allEntries = true),
+            @CacheEvict(cacheNames = "paymentRenewals", allEntries = true)
+        })
     public UserProfileResponse changePlan(Long userId, PlanChangeRequest request) {
         User user = findUser(userId);
         MembershipTier membershipTier = request.membershipTier();
@@ -128,6 +143,11 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
+        @Caching(evict = {
+            @CacheEvict(cacheNames = "userProfile", key = "#userId"),
+            @CacheEvict(cacheNames = "userList", allEntries = true),
+            @CacheEvict(cacheNames = "paymentRenewals", allEntries = true)
+        })
     public UserProfileResponse renewPlan(Long userId, PlanRenewRequest request) {
         User user = findUser(userId);
         int durationMonths = resolveDuration(request.durationMonths(), 1);
@@ -138,6 +158,11 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
+        @Caching(evict = {
+            @CacheEvict(cacheNames = "userProfile", key = "#targetUserId"),
+            @CacheEvict(cacheNames = "userList", allEntries = true),
+            @CacheEvict(cacheNames = "paymentRenewals", allEntries = true)
+        })
     public void deleteUser(Long actorId, RoleType actorRole, Long targetUserId) {
         boolean privileged = actorRole == RoleType.CLUB_ADMIN || actorRole == RoleType.CLUB_EMPLOYE;
         if (!privileged && !targetUserId.equals(actorId)) {
