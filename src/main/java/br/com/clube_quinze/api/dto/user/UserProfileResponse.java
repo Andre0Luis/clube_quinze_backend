@@ -20,6 +20,8 @@ public record UserProfileResponse(
         PlanSummary plan,
         LocalDateTime createdAt,
         LocalDateTime lastLogin,
+        LocalDate planRenewalDate,
+        LocalDate planEndDate,
         AppointmentResponse nextAppointment,
         List<PreferenceResponse> preferences,
         String profilePictureUrl,

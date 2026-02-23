@@ -4,6 +4,8 @@ import br.com.clube_quinze.api.dto.appointment.AppointmentResponse;
 import br.com.clube_quinze.api.dto.payment.PlanSummary;
 import br.com.clube_quinze.api.dto.preference.PreferenceResponse;
 import br.com.clube_quinze.api.dto.user.UpdateUserRequest;
+import br.com.clube_quinze.api.dto.user.PlanChangeRequest;
+import br.com.clube_quinze.api.dto.user.PlanRenewRequest;
 import br.com.clube_quinze.api.dto.user.UserGalleryPhotoRequest;
 import br.com.clube_quinze.api.dto.user.UserGalleryPhotoResponse;
 import br.com.clube_quinze.api.dto.user.UserProfileResponse;
@@ -16,12 +18,14 @@ import br.com.clube_quinze.api.model.user.User;
 import br.com.clube_quinze.api.model.user.UserGalleryPhoto;
 import br.com.clube_quinze.api.model.user.UserPreference;
 import br.com.clube_quinze.api.model.enumeration.MembershipTier;
+import br.com.clube_quinze.api.model.enumeration.RoleType;
 import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.PlanRepository;
 import br.com.clube_quinze.api.repository.UserPreferenceRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.service.user.UserService;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -105,6 +109,44 @@ public class UserServiceImpl implements UserService {
         return buildUserProfileResponse(updated);
     }
 
+    @Override
+    @Transactional
+    public UserProfileResponse changePlan(Long userId, PlanChangeRequest request) {
+        User user = findUser(userId);
+        MembershipTier membershipTier = request.membershipTier();
+        Plan plan = planRepository.findByName(membershipTier.name())
+                .orElseThrow(() -> new ResourceNotFoundException("Plano não encontrado"));
+        int durationMonths = resolveDuration(request.durationMonths(), plan.getDurationMonths());
+
+        user.setMembershipTier(membershipTier);
+        user.setPlan(plan);
+        applyPlanDates(user, durationMonths, true);
+
+        User updated = userRepository.save(user);
+        return buildUserProfileResponse(updated);
+    }
+
+    @Override
+    @Transactional
+    public UserProfileResponse renewPlan(Long userId, PlanRenewRequest request) {
+        User user = findUser(userId);
+        int durationMonths = resolveDuration(request.durationMonths(), 1);
+        applyPlanDates(user, durationMonths, false);
+        User updated = userRepository.save(user);
+        return buildUserProfileResponse(updated);
+    }
+
+    @Override
+    @Transactional
+    public void deleteUser(Long actorId, RoleType actorRole, Long targetUserId) {
+        boolean privileged = actorRole == RoleType.CLUB_ADMIN || actorRole == RoleType.CLUB_EMPLOYE;
+        if (!privileged && !targetUserId.equals(actorId)) {
+            throw new BusinessException("Sem permissão para excluir este usuário");
+        }
+        User target = findUser(targetUserId);
+        userRepository.delete(target);
+    }
+
     private User findUser(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado"));
@@ -140,11 +182,31 @@ public class UserServiceImpl implements UserService {
                 planSummary,
                 user.getCreatedAt(),
                 user.getLastLogin(),
+            user.getPlanRenewalDate(),
+            user.getPlanEndDate(),
                 nextAppointment,
             preferences,
             user.getProfilePictureUrl(),
             user.getProfilePictureBase64(),
             gallery);
+    }
+
+    private void applyPlanDates(User user, int durationMonths, boolean resetStart) {
+        LocalDate today = LocalDate.now(clock);
+        LocalDate base = resetStart || user.getPlanEndDate() == null || user.getPlanEndDate().isBefore(today)
+                ? today
+                : user.getPlanEndDate();
+        LocalDate endDate = base.plusMonths(durationMonths);
+        user.setPlanEndDate(endDate);
+        user.setPlanRenewalDate(endDate);
+    }
+
+    private int resolveDuration(Integer requested, int fallback) {
+        int duration = requested == null ? fallback : requested;
+        if (duration != 1 && duration != 3 && duration != 6 && duration != 12) {
+            throw new BusinessException("Duração inválida. Use 1, 3, 6 ou 12 meses");
+        }
+        return duration;
     }
 
     private PlanSummary toPlanSummary(Plan plan) {
@@ -163,6 +225,8 @@ public class UserServiceImpl implements UserService {
                 user.getRole(),
                 user.getCreatedAt(),
                 user.getLastLogin(),
+            user.getPlanRenewalDate(),
+            user.getPlanEndDate(),
                 planSummary);
     }
 

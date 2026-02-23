@@ -3,6 +3,7 @@ package br.com.clube_quinze.api.repository;
 import br.com.clube_quinze.api.model.enumeration.MembershipTier;
 import br.com.clube_quinze.api.model.enumeration.RoleType;
 import br.com.clube_quinze.api.model.user.User;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -20,4 +21,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
 	List<User> findByMembershipTierOrderByNameAsc(MembershipTier membershipTier);
 
 	List<User> findByRole(RoleType role);
+
+	List<User> findByPlanEndDateBetweenAndActiveTrueOrderByPlanEndDateAsc(LocalDate start, LocalDate end);
 }

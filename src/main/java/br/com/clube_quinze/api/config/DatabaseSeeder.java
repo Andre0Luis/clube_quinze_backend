@@ -36,7 +36,7 @@ public class DatabaseSeeder implements CommandLineRunner {
     @Transactional
     public void run(String... args) {
         Plan defaultPlan = planRepository
-                .findByName("Plano Padrão")
+                .findByName(MembershipTier.QUINZE_STANDARD.name())
                 .orElseGet(this::createDefaultPlan);
 
         userRepository
@@ -46,10 +46,10 @@ public class DatabaseSeeder implements CommandLineRunner {
 
     private Plan createDefaultPlan() {
         Plan plan = new Plan();
-        plan.setName("Plano Padrão");
-        plan.setDescription("Plano padrão inicial do Clube Quinze");
-        plan.setPrice(new BigDecimal("99.90"));
-        plan.setDurationMonths(12);
+        plan.setName(MembershipTier.QUINZE_STANDARD.name());
+        plan.setDescription("Plano inicial QUINZE_STANDARD");
+        plan.setPrice(new BigDecimal("0.00"));
+        plan.setDurationMonths(1);
         Plan saved = planRepository.save(plan);
         log.info("Plano padrão criado com ID {}", saved.getId());
         return saved;
@@ -63,6 +63,8 @@ public class DatabaseSeeder implements CommandLineRunner {
         admin.setRole(RoleType.CLUB_ADMIN);
         admin.setMembershipTier(MembershipTier.QUINZE_STANDARD);
         admin.setPlan(defaultPlan);
+        admin.setPlanRenewalDate(java.time.LocalDate.now().plusMonths(1));
+        admin.setPlanEndDate(java.time.LocalDate.now().plusMonths(1));
         admin.setActive(true);
         User saved = userRepository.save(admin);
         log.info("Usuário administrador padrão criado com ID {}", saved.getId());

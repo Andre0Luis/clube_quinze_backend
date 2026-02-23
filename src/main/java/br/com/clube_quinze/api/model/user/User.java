@@ -66,6 +66,12 @@ public class User {
     @Column(name = "ultimo_login")
     private LocalDateTime lastLogin;
 
+    @Column(name = "data_renovacao_plano")
+    private LocalDate planRenewalDate;
+
+    @Column(name = "data_encerramento_plano")
+    private LocalDate planEndDate;
+
     @Column(name = "ativo", nullable = false)
     private boolean active = true;
 
@@ -173,6 +179,22 @@ public class User {
 
     public void setLastLogin(LocalDateTime lastLogin) {
         this.lastLogin = lastLogin;
+    }
+
+    public LocalDate getPlanRenewalDate() {
+        return planRenewalDate;
+    }
+
+    public void setPlanRenewalDate(LocalDate planRenewalDate) {
+        this.planRenewalDate = planRenewalDate;
+    }
+
+    public LocalDate getPlanEndDate() {
+        return planEndDate;
+    }
+
+    public void setPlanEndDate(LocalDate planEndDate) {
+        this.planEndDate = planEndDate;
     }
 
     public boolean isActive() {

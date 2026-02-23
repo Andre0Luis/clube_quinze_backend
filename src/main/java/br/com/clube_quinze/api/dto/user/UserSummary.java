@@ -16,5 +16,7 @@ public record UserSummary(
         RoleType role,
         LocalDateTime createdAt,
         LocalDateTime lastLogin,
+        LocalDate planRenewalDate,
+        LocalDate planEndDate,
         PlanSummary plan) {
 }

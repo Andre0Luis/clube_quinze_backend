@@ -1,6 +1,8 @@
 package br.com.clube_quinze.api.controller;
 
 import br.com.clube_quinze.api.dto.user.UpdateUserRequest;
+import br.com.clube_quinze.api.dto.user.PlanChangeRequest;
+import br.com.clube_quinze.api.dto.user.PlanRenewRequest;
 import br.com.clube_quinze.api.dto.user.UserProfileResponse;
 import br.com.clube_quinze.api.dto.user.UserSummary;
 import br.com.clube_quinze.api.exception.UnauthorizedException;
@@ -23,6 +25,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -111,6 +115,22 @@ public class UserController {
         return ResponseEntity.ok(userService.updateProfile(userId, request));
     }
 
+    @PostMapping("/{userId}/plan")
+    @PreAuthorize("hasAnyRole('CLUB_EMPLOYE','CLUB_ADMIN')")
+    public ResponseEntity<UserProfileResponse> changePlan(
+            @PathVariable Long userId,
+            @Valid @RequestBody PlanChangeRequest request) {
+        return ResponseEntity.ok(userService.changePlan(userId, request));
+    }
+
+    @PostMapping("/{userId}/plan/renew")
+    @PreAuthorize("hasAnyRole('CLUB_EMPLOYE','CLUB_ADMIN')")
+    public ResponseEntity<UserProfileResponse> renewPlan(
+            @PathVariable Long userId,
+            @Valid @RequestBody PlanRenewRequest request) {
+        return ResponseEntity.ok(userService.renewPlan(userId, request));
+    }
+
     @PutMapping(value = "/{userId}/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(
             summary = "Atualizar perfil por ID com upload",
@@ -129,6 +149,16 @@ public class UserController {
 
         UpdateUserRequest enriched = enrichWithUploads(request, profilePicture, galleryFiles, galleryPositions, folder);
         return ResponseEntity.ok(userService.updateProfile(userId, enriched));
+    }
+
+    @DeleteMapping("/{userId}")
+    @Operation(summary = "Excluir usuário")
+    public ResponseEntity<Void> deleteUser(
+            @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser,
+            @PathVariable Long userId) {
+        Long actorId = extractUserId(currentUser);
+        userService.deleteUser(actorId, currentUser.getRole(), userId);
+        return ResponseEntity.noContent().build();
     }
 
     private UpdateUserRequest enrichWithUploads(
