@@ -1,39 +1,72 @@
-
-
-
-<!doctype html>
+<!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" lang="pt-BR">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Recuperacao de senha</title>
-  </head>
-  <body style="margin:0;padding:0;background-color:#f6f4ef;font-family:Arial,Helvetica,sans-serif;color:#1f1f1f;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f6f4ef;padding:24px 12px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="width:600px;max-width:100%;background-color:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e9e4d8;">
-            <tr>
-              <td style="padding:28px 32px;background-color:#132d1a;color:#f6f4ef;">
-                <div style="font-size:20px;letter-spacing:0.6px;text-transform:uppercase;">Clube Quinze</div>
-                <div style="font-size:26px;font-weight:700;margin-top:8px;">Recuperacao de senha</div>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:28px 32px;">
-                <p style="margin:0 0 12px 0;font-size:16px;">Ola <span th:text="${name}">nome</span>,</p>
-                <p style="margin:0 0 16px 0;font-size:16px;">Recebemos uma solicitacao para redefinir sua senha. Para continuar, clique no botao abaixo:</p>
-                <div style="margin:20px 0;">
-                  <a th:href="${resetLink}" href="https://clubequinzeapp.cloud" style="display:inline-block;background:#132d1a;color:#f6f4ef;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:600;font-size:14px;">Redefinir senha</a>
-                </div>
-                <p style="margin:0 0 8px 0;font-size:14px;color:#5a564f;">Se o botao nao funcionar, copie e cole o link abaixo no navegador:</p>
-                <p style="margin:0;font-size:12px;color:#6b655c;word-break:break-all;" th:text="${resetLink}">https://clubequinzeapp.cloud/reset</p>
-                <p style="margin:16px 0 0 0;font-size:12px;color:#6b655c;">Se voce nao solicitou este email, ignore esta mensagem.</p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Recuperação de Senha - Clube 15</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f9fafb; font-family: Arial, Helvetica, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #f9fafb; padding: 48px 16px;">
+    <tr>
+      <td align="center">
+        <!-- Container -->
+        <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-width: 100%;">
+          
+          <!-- Logo Header -->
+          <tr>
+            <td align="center" style="padding: 48px 32px 32px 32px; border-bottom: 1px solid #f3f4f6;">
+              <h2 style="color: #00053D; margin: 0; font-size: 32px; font-weight: bold; letter-spacing: 2px;">CLUBE 15</h2>
+            </td>
+          </tr>
+
+          <!-- Main Content -->
+          <tr>
+            <td align="center" style="padding: 48px 32px;">
+              <h1 style="color: #111827; font-size: 30px; font-weight: normal; margin: 0 0 24px 0;">Recupere sua senha</h1>
+              
+              <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin: 0 0 40px 0; max-width: 400px;">
+                Olá <span th:text="${name}">usuário</span>,<br><br>
+                Recebemos uma solicitação para alterar sua senha. Clique no botão abaixo para criar uma nova.
+              </p>
+
+              <!-- CTA Button -->
+              <div style="margin-bottom: 40px;">
+                <a th:href="${resetLink}" href="#" style="display: inline-block; background-color: #00053D; color: #ffffff; font-weight: normal; font-size: 16px; text-decoration: none; padding: 16px 48px; border-radius: 8px;">
+                  Redefinir Senha
+                </a>
+              </div>
+
+              <!-- Footer Info -->
+              <div style="border-top: 1px solid #f3f4f6; padding-top: 32px;">
+                <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 0;">
+                  Se você não solicitou a alteração de senha, ignore este e-mail. Sua senha permanecerá inalterada.
+                </p>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="background-color: #f9fafb; padding: 24px 32px; border-top: 1px solid #f3f4f6;">
+              <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+                &copy; <span th:text="${#dates.year(#dates.createNow())}">2026</span> Clube 15. Todos os direitos reservados.
+              </p>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Outside Info -->
+        <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="max-width: 100%; margin-top: 24px;">
+          <tr>
+            <td align="center">
+              <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+                Este é um e-mail transacional do Clube 15
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
 </html>
