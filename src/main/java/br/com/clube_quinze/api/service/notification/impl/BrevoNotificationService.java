@@ -73,8 +73,34 @@ public class BrevoNotificationService implements NotificationService {
         Context context = new Context();
         context.setVariable("name", name);
         context.setVariable("resetLink", resetLink);
-        String html = templateEngine.process("forgot-passworld", context);
+        String html = templateEngine.process("forgot-password", context);
         String subject = "Recuperacao de senha";
+        sendEmail(email, name, subject, html);
+    }
+
+    @Override
+    @Async("asyncExecutor")
+    public void notifyAppointmentReminder(String email, String name, String scheduledAt, String description, String offsetLabel) {
+        Context context = new Context();
+        context.setVariable("name", name);
+        context.setVariable("scheduledAt", scheduledAt);
+        context.setVariable("description", description);
+        context.setVariable("offsetLabel", offsetLabel);
+        String html = templateEngine.process("appointment-reminder", context);
+        String subject = "Lembrete: você tem um agendamento " + offsetLabel;
+        sendEmail(email, name, subject, html);
+    }
+
+    @Override
+    @Async("asyncExecutor")
+    public void notifyAppointmentRescheduled(String email, String name, String oldScheduledAt, String newScheduledAt, String description) {
+        Context context = new Context();
+        context.setVariable("name", name);
+        context.setVariable("oldScheduledAt", oldScheduledAt);
+        context.setVariable("newScheduledAt", newScheduledAt);
+        context.setVariable("description", description);
+        String html = templateEngine.process("appointment-rescheduled", context);
+        String subject = "Seu agendamento foi alterado";
         sendEmail(email, name, subject, html);
     }
 

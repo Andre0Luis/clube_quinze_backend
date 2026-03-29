@@ -63,13 +63,49 @@ public class EmailNotificationService implements NotificationService {
         Context context = new Context();
         context.setVariable("name", name);
         context.setVariable("resetLink", resetLink);
-        String html = templateEngine.process("forgot-passworld", context);
+        String html = templateEngine.process("forgot-password", context);
         String subject = "Recuperacao de senha";
         try {
             sendHtml(email, subject, html);
             log.info("[async-email] Reset de senha enviado para {}", email);
         } catch (MailException ex) {
             log.error("Falha ao enviar reset de senha para {}: {}", email, ex.getMessage());
+        }
+    }
+
+    @Override
+    @Async("asyncExecutor")
+    public void notifyAppointmentReminder(String email, String name, String scheduledAt, String description, String offsetLabel) {
+        Context context = new Context();
+        context.setVariable("name", name);
+        context.setVariable("scheduledAt", scheduledAt);
+        context.setVariable("description", description);
+        context.setVariable("offsetLabel", offsetLabel);
+        String html = templateEngine.process("appointment-reminder", context);
+        String subject = "Lembrete: você tem um agendamento " + offsetLabel;
+        try {
+            sendHtml(email, subject, html);
+            log.info("[async-email] Lembrete de agendamento enviado para {}", email);
+        } catch (MailException ex) {
+            log.error("Falha ao enviar lembrete para {}: {}", email, ex.getMessage());
+        }
+    }
+
+    @Override
+    @Async("asyncExecutor")
+    public void notifyAppointmentRescheduled(String email, String name, String oldScheduledAt, String newScheduledAt, String description) {
+        Context context = new Context();
+        context.setVariable("name", name);
+        context.setVariable("oldScheduledAt", oldScheduledAt);
+        context.setVariable("newScheduledAt", newScheduledAt);
+        context.setVariable("description", description);
+        String html = templateEngine.process("appointment-rescheduled", context);
+        String subject = "Seu agendamento foi alterado";
+        try {
+            sendHtml(email, subject, html);
+            log.info("[async-email] Notificação de remarcação enviada para {}", email);
+        } catch (MailException ex) {
+            log.error("Falha ao enviar notificação de remarcação para {}: {}", email, ex.getMessage());
         }
     }
 

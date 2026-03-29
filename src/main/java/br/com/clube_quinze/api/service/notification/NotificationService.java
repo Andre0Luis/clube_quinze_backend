@@ -6,4 +6,8 @@ public interface NotificationService {
     void notifyWelcome(String email, String name, String rawPassword);
 
     void notifyPasswordReset(String email, String name, String resetLink);
+
+    void notifyAppointmentReminder(String email, String name, String scheduledAt, String description, String offsetLabel);
+
+    void notifyAppointmentRescheduled(String email, String name, String oldScheduledAt, String newScheduledAt, String description);
 }

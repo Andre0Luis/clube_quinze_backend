@@ -31,4 +31,16 @@ public class LoggingNotificationService implements NotificationService {
     public void notifyPasswordReset(String email, String name, String resetLink) {
         log.info("[async] Reset de senha enviado para email={} name={}", email, name);
     }
+
+    @Override
+    @Async("asyncExecutor")
+    public void notifyAppointmentReminder(String email, String name, String scheduledAt, String description, String offsetLabel) {
+        log.info("[async] Lembrete de agendamento para email={} name={} em={} offset={}", email, name, scheduledAt, offsetLabel);
+    }
+
+    @Override
+    @Async("asyncExecutor")
+    public void notifyAppointmentRescheduled(String email, String name, String oldScheduledAt, String newScheduledAt, String description) {
+        log.info("[async] Agendamento remarcado para email={} name={} de={} para={}", email, name, oldScheduledAt, newScheduledAt);
+    }
 }

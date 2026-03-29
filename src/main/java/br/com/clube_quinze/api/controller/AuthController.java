@@ -1,17 +1,21 @@
 package br.com.clube_quinze.api.controller;
 
 import br.com.clube_quinze.api.dto.auth.AuthResponse;
+import br.com.clube_quinze.api.dto.auth.ChangePasswordRequest;
 import br.com.clube_quinze.api.dto.auth.ForgotPasswordRequest;
 import br.com.clube_quinze.api.dto.auth.LoginRequest;
 import br.com.clube_quinze.api.dto.auth.RefreshTokenRequest;
 import br.com.clube_quinze.api.dto.auth.RegisterRequest;
 import br.com.clube_quinze.api.dto.auth.ResetPasswordRequest;
+import br.com.clube_quinze.api.security.ClubeQuinzeUserDetails;
 import br.com.clube_quinze.api.service.auth.AuthService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -60,4 +64,13 @@ public class AuthController {
         authService.resetPassword(request);
         return ResponseEntity.noContent().build();
     }
+
+    @PutMapping("/change-password")
+    public ResponseEntity<Void> changePassword(
+            @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser,
+            @Valid @RequestBody ChangePasswordRequest request) {
+        authService.changePassword(currentUser.getId(), request);
+        return ResponseEntity.noContent().build();
+    }
 }
+

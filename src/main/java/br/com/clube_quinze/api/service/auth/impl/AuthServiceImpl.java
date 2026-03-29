@@ -1,6 +1,7 @@
 package br.com.clube_quinze.api.service.auth.impl;
 
 import br.com.clube_quinze.api.dto.auth.AuthResponse;
+import br.com.clube_quinze.api.dto.auth.ChangePasswordRequest;
 import br.com.clube_quinze.api.dto.auth.ForgotPasswordRequest;
 import br.com.clube_quinze.api.dto.auth.LoginRequest;
 import br.com.clube_quinze.api.dto.auth.RefreshTokenRequest;
@@ -235,6 +236,26 @@ public class AuthServiceImpl implements AuthService {
 
         token.setUsedAt(clock.instant());
         passwordResetTokenRepository.save(token);
+
+        refreshTokenRepository.deleteByUserId(user.getId());
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(Long userId, ChangePasswordRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado"));
+
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new BusinessException("Senha atual incorreta");
+        }
+
+        if (passwordEncoder.matches(request.newPassword(), user.getPasswordHash())) {
+            throw new BusinessException("A nova senha deve ser diferente da senha atual");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
 
         refreshTokenRepository.deleteByUserId(user.getId());
     }

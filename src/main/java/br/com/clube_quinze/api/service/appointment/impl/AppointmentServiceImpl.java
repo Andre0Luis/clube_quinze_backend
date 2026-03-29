@@ -17,15 +17,18 @@ import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.service.appointment.AppointmentScheduleSettings;
 import br.com.clube_quinze.api.service.appointment.AppointmentService;
+import br.com.clube_quinze.api.service.notification.NotificationService;
 import br.com.clube_quinze.api.util.PageUtils;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -41,18 +44,23 @@ public class AppointmentServiceImpl implements AppointmentService {
     private static final LocalTime OPENING_TIME = AppointmentScheduleSettings.OPENING_TIME;
     private static final LocalTime CLOSING_TIME = AppointmentScheduleSettings.CLOSING_TIME;
     private static final Duration SLOT_DURATION = AppointmentScheduleSettings.SLOT_DURATION;
+    private static final DateTimeFormatter PT_BR_FORMATTER =
+            DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm", new Locale("pt", "BR"));
 
     private final AppointmentRepository appointmentRepository;
     private final UserRepository userRepository;
     private final br.com.clube_quinze.api.service.notification.PushNotificationService pushNotificationService;
+    private final NotificationService notificationService;
     private final Clock clock;
 
     public AppointmentServiceImpl(AppointmentRepository appointmentRepository, UserRepository userRepository, Clock clock,
-            br.com.clube_quinze.api.service.notification.PushNotificationService pushNotificationService) {
+            br.com.clube_quinze.api.service.notification.PushNotificationService pushNotificationService,
+            NotificationService notificationService) {
         this.appointmentRepository = appointmentRepository;
         this.userRepository = userRepository;
         this.clock = clock;
         this.pushNotificationService = pushNotificationService;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -131,6 +139,9 @@ public class AppointmentServiceImpl implements AppointmentService {
         Appointment appointment = findAppointment(appointmentId);
         enforceOwnership(appointment, actorId, privileged);
 
+        // capture old time before update
+        LocalDateTime oldScheduledAt = appointment.getScheduledAt();
+
         validateAppointmentDate(request.newDate());
         validateBusinessHours(request.newDate());
         ensureSlotAvailable(request.newDate(), appointment.getId());
@@ -142,16 +153,30 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.setStatus(AppointmentStatus.SCHEDULED);
 
         Appointment updated = appointmentRepository.save(appointment);
-        // best-effort push confirmation
+
+        // best-effort push + email notification
+        User client = updated.getClient();
+        String newFormatted = updated.getScheduledAt().format(PT_BR_FORMATTER);
         try {
             var data = new java.util.HashMap<String, Object>();
             data.put("appointmentId", updated.getId());
             data.put("scheduledAt", updated.getScheduledAt().toString());
-            pushNotificationService.sendToUser(updated.getClient().getId(), "RESCHEDULED",
+            pushNotificationService.sendToUser(client.getId(), "RESCHEDULED",
                     "Agendamento remarcado",
-                    "Seu agendamento foi remarcado para " + updated.getScheduledAt().toString(), data);
+                    "Seu agendamento foi remarcado para " + newFormatted, data);
         } catch (Exception ignored) {
         }
+
+        // send email with old/new times and description
+        try {
+            String oldFormatted = oldScheduledAt.format(PT_BR_FORMATTER);
+            String description = updated.getNotes() != null ? updated.getNotes() : "";
+            notificationService.notifyAppointmentRescheduled(
+                    client.getEmail(), client.getName(),
+                    oldFormatted, newFormatted, description);
+        } catch (Exception ignored) {
+        }
+
         return toAppointmentResponse(updated);
     }
 

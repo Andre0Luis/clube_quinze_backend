@@ -1,6 +1,7 @@
 package br.com.clube_quinze.api.service.auth;
 
 import br.com.clube_quinze.api.dto.auth.AuthResponse;
+import br.com.clube_quinze.api.dto.auth.ChangePasswordRequest;
 import br.com.clube_quinze.api.dto.auth.ForgotPasswordRequest;
 import br.com.clube_quinze.api.dto.auth.LoginRequest;
 import br.com.clube_quinze.api.dto.auth.RefreshTokenRequest;
@@ -20,4 +21,6 @@ public interface AuthService {
     void requestPasswordReset(ForgotPasswordRequest request);
 
     void resetPassword(ResetPasswordRequest request);
+
+    void changePassword(Long userId, ChangePasswordRequest request);
 }
