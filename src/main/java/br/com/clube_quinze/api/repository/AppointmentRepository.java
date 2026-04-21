@@ -24,6 +24,19 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
+        @Query("""
+            select a
+            from Appointment a
+            join fetch a.client c
+            where a.status = :status
+            and a.scheduledAt >= :from
+            order by a.scheduledAt asc
+            """)
+        List<Appointment> findUpcomingByStatus(
+            @Param("status") AppointmentStatus status,
+            @Param("from") LocalDateTime from,
+            Pageable pageable);
+
     boolean existsByScheduledAt(LocalDateTime scheduledAt);
 
     boolean existsByScheduledAtAndIdNot(LocalDateTime scheduledAt, Long id);

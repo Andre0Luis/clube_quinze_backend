@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
@@ -20,8 +21,11 @@ public class RestAccessDeniedHandler implements AccessDeniedHandler {
             throws IOException {
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        objectMapper.writeValue(response.getOutputStream(), Map.of(
-                "error", "Acesso negado",
-                "message", accessDeniedException.getMessage()));
+        Map<String, Object> body = new HashMap<>();
+        body.put("error", "Acesso negado");
+        body.put("message", accessDeniedException.getMessage() != null
+            ? accessDeniedException.getMessage()
+            : "Ação não permitida para o perfil autenticado");
+        objectMapper.writeValue(response.getOutputStream(), body);
     }
 }

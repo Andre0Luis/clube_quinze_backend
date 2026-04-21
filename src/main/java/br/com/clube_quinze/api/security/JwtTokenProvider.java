@@ -12,6 +12,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 import org.springframework.stereotype.Component;
 
@@ -60,7 +61,7 @@ public class JwtTokenProvider {
         Instant expiry = now.plus(properties.refreshTokenTtl());
         return Jwts.builder()
                 .setSubject(username)
-                .setId(String.valueOf(userId))
+                .setId(userId + "-" + UUID.randomUUID())
                 .setIssuedAt(Date.from(now))
                 .setExpiration(Date.from(expiry))
                 .signWith(signingKey, SignatureAlgorithm.HS256)

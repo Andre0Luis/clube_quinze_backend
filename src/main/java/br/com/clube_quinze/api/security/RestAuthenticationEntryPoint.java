@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.AuthenticationException;
@@ -20,8 +21,11 @@ public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
             throws IOException {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        objectMapper.writeValue(response.getOutputStream(), Map.of(
-                "error", "Acesso não autorizado",
-                "message", authException.getMessage()));
+        Map<String, Object> body = new HashMap<>();
+        body.put("error", "Acesso não autorizado");
+        body.put("message", authException.getMessage() != null
+            ? authException.getMessage()
+            : "É necessário autenticar para acessar este recurso");
+        objectMapper.writeValue(response.getOutputStream(), body);
     }
 }
