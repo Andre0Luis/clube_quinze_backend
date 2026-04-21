@@ -1,5 +1,7 @@
 package br.com.clube_quinze.api.dto.user;
 
+import java.io.Serializable;
+
 import br.com.clube_quinze.api.dto.payment.PlanSummary;
 import br.com.clube_quinze.api.model.enumeration.MembershipTier;
 import br.com.clube_quinze.api.model.enumeration.RoleType;
@@ -18,5 +20,5 @@ public record UserSummary(
         LocalDateTime lastLogin,
         LocalDate planRenewalDate,
         LocalDate planEndDate,
-        PlanSummary plan) {
+        PlanSummary plan) implements Serializable {
 }

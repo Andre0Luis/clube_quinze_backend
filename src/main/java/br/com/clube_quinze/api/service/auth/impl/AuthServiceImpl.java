@@ -26,7 +26,9 @@ import br.com.clube_quinze.api.security.JwtTokenProvider;
 import br.com.clube_quinze.api.service.appointment.AppointmentScheduleSettings;
 import br.com.clube_quinze.api.service.appointment.RecurringAppointmentScheduler;
 import br.com.clube_quinze.api.service.auth.AuthService;
-import br.com.clube_quinze.api.service.notification.NotificationService;
+import br.com.clube_quinze.api.config.RabbitMQConfig;
+import br.com.clube_quinze.api.dto.notification.NotificationMessageDTO;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import java.time.Duration;
 import java.time.Clock;
 import java.time.Instant;
@@ -58,7 +60,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtProperties jwtProperties;
     private final Clock clock;
-    private final NotificationService notificationService;
+    private final RabbitTemplate rabbitTemplate;
     private final UserPreferenceRepository userPreferenceRepository;
     private final RecurringAppointmentScheduler recurringAppointmentScheduler;
     private final long resetExpirationMinutes;
@@ -74,7 +76,7 @@ public class AuthServiceImpl implements AuthService {
             JwtTokenProvider jwtTokenProvider,
             JwtProperties jwtProperties,
             Clock clock,
-            NotificationService notificationService,
+            RabbitTemplate rabbitTemplate,
             UserPreferenceRepository userPreferenceRepository,
             RecurringAppointmentScheduler recurringAppointmentScheduler,
             @Value("${app.security.reset.expiration-minutes:30}") long resetExpirationMinutes,
@@ -88,7 +90,7 @@ public class AuthServiceImpl implements AuthService {
         this.jwtTokenProvider = jwtTokenProvider;
         this.jwtProperties = jwtProperties;
         this.clock = clock;
-        this.notificationService = notificationService;
+        this.rabbitTemplate = rabbitTemplate;
         this.userPreferenceRepository = userPreferenceRepository;
         this.recurringAppointmentScheduler = recurringAppointmentScheduler;
         this.resetExpirationMinutes = resetExpirationMinutes;
@@ -119,8 +121,12 @@ public class AuthServiceImpl implements AuthService {
 
         User savedUser = userRepository.save(user);
 
-        // Envio de boas-vindas com credenciais (assíncrono)
-        notificationService.notifyWelcome(savedUser.getEmail(), savedUser.getName(), request.password());
+        // Envio de boas-vindas com credenciais (assíncrono) via RabbitMQ
+        java.util.Map<String, Object> welcomeData = new java.util.HashMap<>();
+        welcomeData.put("email", savedUser.getEmail());
+        welcomeData.put("name", savedUser.getName());
+        welcomeData.put("rawPassword", request.password());
+        rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("WELCOME_EMAIL", welcomeData));
 
         //persistPreferredAppointmentTime(savedUser, request.preferredAppointmentTime());
         // try {
@@ -214,7 +220,11 @@ public class AuthServiceImpl implements AuthService {
         passwordResetTokenRepository.save(token);
 
         String resetLink = buildResetLink(tokenValue);
-        notificationService.notifyPasswordReset(user.getEmail(), user.getName(), resetLink);
+        java.util.Map<String, Object> resetData = new java.util.HashMap<>();
+        resetData.put("email", user.getEmail());
+        resetData.put("name", user.getName());
+        resetData.put("resetLink", resetLink);
+        rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("PASSWORD_RESET_EMAIL", resetData));
     }
 
     @Override

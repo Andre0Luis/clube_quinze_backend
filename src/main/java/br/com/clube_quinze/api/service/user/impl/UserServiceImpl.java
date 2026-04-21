@@ -113,6 +113,10 @@ public class UserServiceImpl implements UserService {
         user.setProfilePictureUrl(normalizeOptional(request.profilePictureUrl()));
         user.setProfilePictureBase64(normalizeOptional(request.profilePictureBase64()));
 
+        if (request.gallery() != null) {
+            user.getGalleryPhotos().clear();
+            userRepository.saveAndFlush(user);
+        }
         applyGallery(user, request.gallery());
 
         User updated = userRepository.save(user);
@@ -289,7 +293,6 @@ public class UserServiceImpl implements UserService {
             return;
         }
 
-        user.getGalleryPhotos().clear();
         if (galleryRequests.isEmpty()) {
             return;
         }

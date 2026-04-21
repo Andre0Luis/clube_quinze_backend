@@ -15,7 +15,9 @@ import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.FeedbackRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.service.feedback.FeedbackService;
-import br.com.clube_quinze.api.service.notification.NotificationService;
+import br.com.clube_quinze.api.config.RabbitMQConfig;
+import br.com.clube_quinze.api.dto.notification.NotificationMessageDTO;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import br.com.clube_quinze.api.util.PageUtils;
 import java.util.List;
 import org.springframework.data.domain.Page;
@@ -31,17 +33,17 @@ public class FeedbackServiceImpl implements FeedbackService {
     private final FeedbackRepository feedbackRepository;
     private final AppointmentRepository appointmentRepository;
     private final UserRepository userRepository;
-    private final NotificationService notificationService;
+    private final RabbitTemplate rabbitTemplate;
 
     public FeedbackServiceImpl(
             FeedbackRepository feedbackRepository,
             AppointmentRepository appointmentRepository,
             UserRepository userRepository,
-            NotificationService notificationService) {
+            RabbitTemplate rabbitTemplate) {
         this.feedbackRepository = feedbackRepository;
         this.appointmentRepository = appointmentRepository;
         this.userRepository = userRepository;
-        this.notificationService = notificationService;
+        this.rabbitTemplate = rabbitTemplate;
     }
 
     @Override
@@ -70,11 +72,12 @@ public class FeedbackServiceImpl implements FeedbackService {
 
         Feedback saved = feedbackRepository.save(feedback);
 
-        // Notificar de forma assíncrona sem impactar a resposta
-        notificationService.notifyFeedbackReceived(
-            client.getId(),
-            appointment.getId(),
-            request.rating());
+        // Notificar de forma assíncrona via fila
+        java.util.Map<String, Object> data = new java.util.HashMap<>();
+        data.put("userId", client.getId());
+        data.put("appointmentId", appointment.getId());
+        data.put("rating", request.rating());
+        rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("FEEDBACK_RECEIVED", data));
 
         return toResponse(saved);
     }

@@ -1,5 +1,7 @@
 package br.com.clube_quinze.api.dto.admin;
 
+import java.io.Serializable;
+
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

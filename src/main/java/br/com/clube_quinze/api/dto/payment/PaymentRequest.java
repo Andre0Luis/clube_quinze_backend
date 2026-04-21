@@ -1,5 +1,7 @@
 package br.com.clube_quinze.api.dto.payment;
 
+import java.io.Serializable;
+
 import br.com.clube_quinze.api.model.enumeration.PaymentStatus;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;

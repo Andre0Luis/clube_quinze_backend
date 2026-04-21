@@ -1,5 +1,7 @@
 package br.com.clube_quinze.api.dto.appointment;
 
+import java.io.Serializable;
+
 import br.com.clube_quinze.api.model.enumeration.AppointmentStatus;
 import br.com.clube_quinze.api.model.enumeration.MembershipTier;
 import java.time.LocalDateTime;
@@ -12,5 +14,5 @@ public record AppointmentResponse(
         AppointmentStatus status,
         String serviceType,
         String notes,
-        Integer durationMinutes) {
+        Integer durationMinutes) implements Serializable {
 }

@@ -22,7 +22,7 @@ import br.com.clube_quinze.api.repository.UserPreferenceRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.security.JwtProperties;
 import br.com.clube_quinze.api.security.JwtTokenProvider;
-import br.com.clube_quinze.api.service.notification.NotificationService;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import br.com.clube_quinze.api.service.appointment.RecurringAppointmentScheduler;
 import java.time.Clock;
 import java.time.Instant;
@@ -57,7 +57,7 @@ class AuthServiceImplTest {
     @Mock
     private JwtProperties jwtProperties;
     @Mock
-    private NotificationService notificationService;
+    private RabbitTemplate rabbitTemplate;
     @Mock
     private UserPreferenceRepository userPreferenceRepository;
     @Mock
@@ -79,7 +79,7 @@ class AuthServiceImplTest {
                 jwtTokenProvider,
                 jwtProperties,
                 clock,
-                notificationService,
+                rabbitTemplate,
                 userPreferenceRepository,
                 recurringAppointmentScheduler,
                 30,
@@ -108,7 +108,7 @@ class AuthServiceImplTest {
         assertEquals(user, savedToken.getUser());
         assertEquals(clock.instant().plusSeconds(30 * 60), savedToken.getExpiresAt());
 
-        verify(notificationService).notifyPasswordReset(eq("user@example.com"), eq("André"), anyString());
+        verify(rabbitTemplate).convertAndSend(anyString(), anyString(), any(br.com.clube_quinze.api.dto.notification.NotificationMessageDTO.class));
     }
 
     @Test
@@ -118,7 +118,7 @@ class AuthServiceImplTest {
         subject.requestPasswordReset(new ForgotPasswordRequest("notfound@example.com"));
 
         verify(passwordResetTokenRepository, never()).save(any());
-        verify(notificationService, never()).notifyPasswordReset(anyString(), anyString(), anyString());
+        verify(rabbitTemplate, never()).convertAndSend(anyString(), anyString(), any(br.com.clube_quinze.api.dto.notification.NotificationMessageDTO.class));
     }
 
     @Test

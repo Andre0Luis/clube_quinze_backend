@@ -1,5 +1,7 @@
 package br.com.clube_quinze.api.dto.user;
 
+import java.io.Serializable;
+
 import br.com.clube_quinze.api.model.enumeration.MembershipTier;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
