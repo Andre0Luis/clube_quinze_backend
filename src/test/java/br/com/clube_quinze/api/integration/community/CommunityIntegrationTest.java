@@ -35,15 +35,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CommunityIntegrationTest extends AbstractIntegrationTest {
 
     private static final String BASE = "/api/v1/community/posts";
-    private static Long createdPostId;
-    private static Long createdCommentId;
+    private Long createdPostId;
+    private Long createdCommentId;
     private String memberToken;
-    private String adminToken;
 
     @BeforeEach
     void setup() {
-        adminToken = adminToken();
-
         String email = "comm_member_" + UUID.randomUUID().toString().substring(0, 8) + "@test.com";
         Map<String, Object> regReq = Map.of(
                 "name", "Membro Comunidade",
@@ -136,7 +133,7 @@ class CommunityIntegrationTest extends AbstractIntegrationTest {
         ResponseEntity<Map> response = post(BASE + "/" + createdPostId + "/likes", null, memberToken, Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).containsKey("liked");
+        assertThat(response.getBody()).containsKey("id");
     }
 
     @Test

@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PreferenceIntegrationTest extends AbstractIntegrationTest {
 
     private static final String BASE = "/api/v1/preferences";
-    private static Long createdPreferenceId;
+    private Long createdPreferenceId;
     private String memberToken;
     private String adminToken;
 

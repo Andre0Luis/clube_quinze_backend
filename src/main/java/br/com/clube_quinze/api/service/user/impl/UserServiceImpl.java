@@ -71,7 +71,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional(readOnly = true)
-    @Cacheable(cacheNames = "userList", key = "#membershipTierFilter")
+    @Cacheable(cacheNames = "userList", key = "#membershipTierFilter == null ? 'ALL' : #membershipTierFilter")
     public List<UserSummary> listMembers(String membershipTierFilter) {
         String normalizedFilter = normalizeOptional(membershipTierFilter);
         MembershipTier tier = parseMembershipTier(normalizedFilter);

@@ -20,6 +20,17 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
+        @Query("""
+            select coalesce(sum(p.amount), 0)
+            from Payment p
+            where p.status = :status
+            and p.paidAt between :start and :end
+            """)
+        java.math.BigDecimal sumAmountByStatusAndPaidAtBetween(
+            @Param("status") PaymentStatus status,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
     @Query("select p from Payment p where p.status = 'PENDING' and p.paidAt is null")
     List<Payment> findPending();
 }

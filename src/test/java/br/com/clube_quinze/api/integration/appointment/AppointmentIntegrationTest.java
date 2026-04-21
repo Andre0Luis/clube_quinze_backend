@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,13 +34,27 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @DisplayName("Agendamentos — Testes de Integração")
+@SuppressWarnings({"rawtypes", "unchecked"})
 class AppointmentIntegrationTest extends AbstractIntegrationTest {
 
     private static final String BASE = "/api/v1/appointments";
-    private static Long createdAppointmentId;
+    private static final AtomicInteger SLOT_COUNTER = new AtomicInteger(0);
+    private Long createdAppointmentId;
     private String memberToken;
     private Long memberId;
     private String adminToken;
+
+    private LocalDateTime uniqueFutureSlot() {
+        int slotIndex = SLOT_COUNTER.getAndIncrement();
+        int dayOffset = 7 + slotIndex;
+        int hourOffset = slotIndex % 6;
+        return LocalDateTime.now()
+                .plusDays(dayOffset)
+                .withHour(10 + hourOffset)
+                .withMinute(0)
+                .withSecond(0)
+                .withNano(0);
+    }
 
     @BeforeEach
     void setup() {
@@ -68,8 +83,7 @@ class AppointmentIntegrationTest extends AbstractIntegrationTest {
     void deveListarSlotsDisponiveis() {
         String date = LocalDate.now().plusDays(3).format(DateTimeFormatter.ISO_DATE);
 
-        ResponseEntity<Map> response = restTemplate.getForEntity(
-                url(BASE + "/availability?date=" + date), Map.class);
+        ResponseEntity<Map> response = get(BASE + "/availability?date=" + date, memberToken, Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
@@ -80,7 +94,7 @@ class AppointmentIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("POST /appointments → 201 membro agenda horário")
     void deveMembrosAgendarHorario() {
         // Data futura garantida: 7 dias à frente, meio-dia
-        LocalDateTime scheduledAt = LocalDateTime.now().plusDays(7).withHour(12).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime scheduledAt = uniqueFutureSlot();
 
         Map<String, Object> request = Map.of(
                 "clientId", memberId,
@@ -95,7 +109,7 @@ class AppointmentIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody()).containsKey("id");
-        assertThat(response.getBody().get("status")).isEqualTo("PENDING");
+        assertThat(response.getBody().get("status")).isEqualTo("SCHEDULED");
 
         createdAppointmentId = ((Number) response.getBody().get("id")).longValue();
     }
@@ -149,14 +163,14 @@ class AppointmentIntegrationTest extends AbstractIntegrationTest {
     void deveAdminAtualizarStatus() {
         if (createdAppointmentId == null) deveMembrosAgendarHorario();
 
-        Map<String, String> statusReq = Map.of("status", "CONFIRMED");
+        Map<String, String> statusReq = Map.of("status", "COMPLETED");
 
         ResponseEntity<Map> response = patch(
                 BASE + "/" + createdAppointmentId + "/status",
                 statusReq, adminToken, Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody().get("status")).isEqualTo("CONFIRMED");
+        assertThat(response.getBody().get("status")).isEqualTo("COMPLETED");
     }
 
     @Test
@@ -165,10 +179,10 @@ class AppointmentIntegrationTest extends AbstractIntegrationTest {
     void deveMembrosReagendarHorario() {
         if (createdAppointmentId == null) deveMembrosAgendarHorario();
 
-        LocalDateTime newTime = LocalDateTime.now().plusDays(14).withHour(10).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime newTime = uniqueFutureSlot().plusDays(10);
 
         Map<String, String> rescheduleReq = Map.of(
-                "scheduledAt", newTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            "newDate", newTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
         );
 
         ResponseEntity<Map> response = put(
@@ -183,7 +197,7 @@ class AppointmentIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("DELETE /appointments/{id} → 204 membro cancela agendamento")
     void deveMembroCancelarAgendamento() {
         // Cria um agendamento específico para cancelar
-        LocalDateTime scheduledAt = LocalDateTime.now().plusDays(21).withHour(14).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime scheduledAt = uniqueFutureSlot().plusDays(15);
 
         Map<String, Object> request = Map.of(
                 "clientId", memberId,

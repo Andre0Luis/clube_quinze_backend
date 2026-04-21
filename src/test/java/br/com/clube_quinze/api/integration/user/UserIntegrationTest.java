@@ -33,7 +33,6 @@ class UserIntegrationTest extends AbstractIntegrationTest {
 
     private static final String BASE = "/api/v1/users";
     private String memberToken;
-    private Long memberId;
     private String adminToken;
 
     @BeforeEach
@@ -74,7 +73,6 @@ class UserIntegrationTest extends AbstractIntegrationTest {
         assertThat(response.getBody()).containsKey("email");
         assertThat(response.getBody()).containsKey("membershipTier");
 
-        memberId = ((Number) response.getBody().get("id")).longValue();
     }
 
     @Test
@@ -90,9 +88,14 @@ class UserIntegrationTest extends AbstractIntegrationTest {
     @Order(4)
     @DisplayName("PUT /users/me → 200 atualiza perfil com sucesso")
     void deveAtualizarPerfilDoUsuario() {
+        ResponseEntity<Map> meResponse = get(BASE + "/me", memberToken, Map.class);
+        assertThat(meResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
         Map<String, Object> updateReq = Map.of(
                 "name", "Nome Atualizado Integração",
-                "phone", "11999998888"
+            "email", meResponse.getBody().get("email"),
+            "membershipTier", meResponse.getBody().get("membershipTier"),
+            "phone", "11999998888"
         );
 
         ResponseEntity<Map> response = put(BASE + "/me", updateReq, memberToken, Map.class);
@@ -120,10 +123,12 @@ class UserIntegrationTest extends AbstractIntegrationTest {
     @Order(6)
     @DisplayName("GET /users → 200 admin lista todos os membros")
     void deveAdminListarMembros() {
-        ResponseEntity<List> response = get(BASE, adminToken, List.class);
+        ResponseEntity<Object> response = get(BASE, adminToken, Object.class);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getStatusCode())
+                .withFailMessage("Resposta inesperada: status=%s body=%s", response.getStatusCode(), response.getBody())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isInstanceOf(List.class);
     }
 
     @Test

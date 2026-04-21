@@ -23,10 +23,14 @@ import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.service.community.CommunityService;
 import br.com.clube_quinze.api.util.PageUtils;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -64,7 +68,8 @@ public class CommunityServiceImpl implements CommunityService {
         Page<CommunityPost> postPage = authorId == null
                 ? postRepository.findAll(pageable)
                 : postRepository.findByAuthorId(authorId, pageable);
-        Page<PostResponse> mapped = postPage.map(this::toPostResponse);
+        List<PostResponse> items = toPostResponses(postPage.getContent());
+        Page<PostResponse> mapped = new PageImpl<>(items, pageable, postPage.getTotalElements());
         return PageUtils.toResponse(mapped);
     }
 
@@ -174,7 +179,7 @@ public class CommunityServiceImpl implements CommunityService {
     }
 
     private CommunityPost findPost(Long postId) {
-        return postRepository.findById(postId)
+        return postRepository.findDetailedById(postId)
                 .orElseThrow(() -> new ResourceNotFoundException("Post não encontrado"));
     }
 
@@ -188,6 +193,40 @@ public class CommunityServiceImpl implements CommunityService {
                 .map(this::toCommentResponse)
                 .toList();
         long likeCount = likeRepository.countByPostId(post.getId());
+        return toPostResponse(post, comments, likeCount);
+    }
+
+    private List<PostResponse> toPostResponses(List<CommunityPost> posts) {
+        if (posts.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> postIds = posts.stream()
+                .map(CommunityPost::getId)
+                .toList();
+
+        Map<Long, List<CommentResponse>> commentsByPostId = new HashMap<>();
+        for (CommunityComment comment : commentRepository.findByPostIdInOrderByPostIdAndCreatedAt(postIds)) {
+            commentsByPostId
+                    .computeIfAbsent(comment.getPost().getId(), ignored -> new ArrayList<>())
+                    .add(toCommentResponse(comment));
+        }
+
+        Map<Long, Long> likeCountByPostId = new HashMap<>();
+        for (CommunityLikeRepository.PostLikeCount likeCount : likeRepository.countGroupedByPostIds(postIds)) {
+            likeCountByPostId.put(likeCount.getPostId(), likeCount.getLikeCount());
+        }
+
+        List<PostResponse> responses = new ArrayList<>(posts.size());
+        for (CommunityPost post : posts) {
+            List<CommentResponse> comments = commentsByPostId.getOrDefault(post.getId(), Collections.emptyList());
+            long likeCount = likeCountByPostId.getOrDefault(post.getId(), 0L);
+            responses.add(toPostResponse(post, comments, likeCount));
+        }
+        return responses;
+    }
+
+    private PostResponse toPostResponse(CommunityPost post, List<CommentResponse> comments, long likeCount) {
         List<PostMediaResponse> media = post.getMedia().stream()
                 .map(m -> new PostMediaResponse(m.getId(), m.getPosition(), m.getImageUrl(), m.getImageBase64()))
                 .toList();

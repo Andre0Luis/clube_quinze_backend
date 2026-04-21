@@ -17,7 +17,9 @@ public class CacheConfig {
                 "userList",
                 "planList",
                 "planById",
-                "paymentRenewals"
+            "paymentRenewals",
+            "feed",
+            "post"
         );
     }
 }

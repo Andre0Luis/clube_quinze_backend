@@ -1,5 +1,8 @@
 package br.com.clube_quinze.api.integration;
 
+import br.com.clube_quinze.api.model.enumeration.RoleType;
+import br.com.clube_quinze.api.model.user.User;
+import br.com.clube_quinze.api.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -12,7 +15,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Classe base para todos os testes de integração.
@@ -23,6 +28,7 @@ import java.util.Map;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
+@SuppressWarnings("rawtypes")
 public abstract class AbstractIntegrationTest {
 
     @LocalServerPort
@@ -33,6 +39,9 @@ public abstract class AbstractIntegrationTest {
 
     @Autowired
     protected ObjectMapper objectMapper;
+
+    @Autowired
+    protected UserRepository userRepository;
 
     // ── Credenciais de seed (criadas pelo DatabaseSeeder no startup) ──────────
     protected static final String ADMIN_EMAIL    = "aluis283@gmail.com";
@@ -64,6 +73,26 @@ public abstract class AbstractIntegrationTest {
     /** Retorna token do admin seed. */
     protected String adminToken() {
         return authenticate(ADMIN_EMAIL, ADMIN_PASSWORD);
+    }
+
+    protected String loginAsAdmin() {
+        return adminToken();
+    }
+
+    protected String loginAsMember() {
+        String email = "member_it_" + UUID.randomUUID().toString().substring(0, 8) + "@test.com";
+        registerUser(email, "Membro Integração");
+        return authenticate(email, "Senha@1234");
+    }
+
+    protected String loginAsEmployee() {
+        String email = "employee_it_" + UUID.randomUUID().toString().substring(0, 8) + "@test.com";
+        registerUser(email, "Funcionário Integração");
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalStateException("Usuário não encontrado após registro"));
+        user.setRole(RoleType.CLUB_EMPLOYE);
+        userRepository.save(user);
+        return authenticate(email, "Senha@1234");
     }
 
     // ── Header helpers ────────────────────────────────────────────────────────
@@ -117,5 +146,18 @@ public abstract class AbstractIntegrationTest {
         return restTemplate.exchange(
                 url(path), HttpMethod.DELETE,
                 new HttpEntity<>(authHeaders(token)), Void.class);
+    }
+
+    private void registerUser(String email, String name) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("name", name);
+        payload.put("email", email);
+        payload.put("password", "Senha@1234");
+        payload.put("membershipTier", "QUINZE_STANDARD");
+
+        ResponseEntity<Map> response = postPublic("/api/v1/auth/register", payload, Map.class);
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            throw new IllegalStateException("Falha ao registrar usuário de teste: " + response.getStatusCode());
+        }
     }
 }
