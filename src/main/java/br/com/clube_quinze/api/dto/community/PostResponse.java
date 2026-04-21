@@ -1,5 +1,8 @@
 package br.com.clube_quinze.api.dto.community;
 
+import java.io.Serializable;
+
+import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -12,5 +15,5 @@ public record PostResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         long likeCount,
-        List<CommentResponse> comments) {
+        List<CommentResponse> comments) implements Serializable {
 }

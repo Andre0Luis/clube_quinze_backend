@@ -1,5 +1,7 @@
 package br.com.clube_quinze.api.dto.common;
 
+import java.io.Serializable;
+
 import java.util.List;
 
 public record PageResponse<T>(
@@ -7,5 +9,5 @@ public record PageResponse<T>(
         long totalElements,
         int totalPages,
         int page,
-        int size) {
+        int size) implements Serializable {
 }

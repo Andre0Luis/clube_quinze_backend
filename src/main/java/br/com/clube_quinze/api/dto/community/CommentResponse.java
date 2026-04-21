@@ -1,5 +1,7 @@
 package br.com.clube_quinze.api.dto.community;
 
+import java.io.Serializable;
+
 import java.time.LocalDateTime;
 
 public record CommentResponse(
@@ -8,5 +10,5 @@ public record CommentResponse(
         Long authorId,
         String content,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt) {
+        LocalDateTime updatedAt) implements Serializable {
 }

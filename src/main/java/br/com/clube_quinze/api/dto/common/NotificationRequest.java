@@ -1,5 +1,7 @@
 package br.com.clube_quinze.api.dto.common;
 
+import java.io.Serializable;
+
 import br.com.clube_quinze.api.model.enumeration.NotificationType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

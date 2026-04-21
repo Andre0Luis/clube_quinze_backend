@@ -1,5 +1,7 @@
 package br.com.clube_quinze.api.dto.common;
 
+import java.io.Serializable;
+
 import br.com.clube_quinze.api.model.enumeration.NotificationType;
 import java.time.LocalDateTime;
 
@@ -10,5 +12,5 @@ public record NotificationResponse(
         String message,
         NotificationType type,
         boolean read,
-        LocalDateTime sentAt) {
+        LocalDateTime sentAt) implements Serializable {
 }

@@ -1,5 +1,7 @@
 package br.com.clube_quinze.api.dto.user;
 
+import java.io.Serializable;
+
 import br.com.clube_quinze.api.dto.appointment.AppointmentResponse;
 import br.com.clube_quinze.api.dto.payment.PlanSummary;
 import br.com.clube_quinze.api.dto.preference.PreferenceResponse;
@@ -26,5 +28,5 @@ public record UserProfileResponse(
         List<PreferenceResponse> preferences,
         String profilePictureUrl,
         String profilePictureBase64,
-        List<UserGalleryPhotoResponse> gallery) {
+        List<UserGalleryPhotoResponse> gallery) implements Serializable {
 }

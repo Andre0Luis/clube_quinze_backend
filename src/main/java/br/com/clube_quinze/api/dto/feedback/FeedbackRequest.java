@@ -1,5 +1,7 @@
 package br.com.clube_quinze.api.dto.feedback;
 
+import java.io.Serializable;
+
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
