@@ -30,6 +30,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +58,7 @@ public class CommunityServiceImpl implements CommunityService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = "feed", key = "#page + '-' + #size + '-' + (#authorId != null ? #authorId : 'ALL')")
     public PageResponse<PostResponse> getFeed(int page, int size, Long authorId) {
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1), Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<CommunityPost> postPage = authorId == null
@@ -66,12 +70,14 @@ public class CommunityServiceImpl implements CommunityService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = "post", key = "#postId")
     public PostResponse getPost(Long postId) {
         CommunityPost post = findPost(postId);
         return toPostResponse(post);
     }
 
     @Override
+    @CacheEvict(value = "feed", allEntries = true)
     public PostResponse createPost(Long authorId, PostRequest request) {
         User author = findUser(authorId);
 
@@ -89,6 +95,10 @@ public class CommunityServiceImpl implements CommunityService {
     }
 
     @Override
+    @Caching(evict = {
+        @CacheEvict(value = "feed", allEntries = true),
+        @CacheEvict(value = "post", key = "#postId")
+    })
     public void deletePost(Long postId, Long actorId, boolean privileged) {
         CommunityPost post = findPost(postId);
         if (!privileged && !post.getAuthor().getId().equals(actorId)) {
@@ -98,6 +108,10 @@ public class CommunityServiceImpl implements CommunityService {
     }
 
     @Override
+    @Caching(evict = {
+        @CacheEvict(value = "feed", allEntries = true),
+        @CacheEvict(value = "post", key = "#postId")
+    })
     public CommentResponse addComment(Long postId, Long authorId, CommentRequest request) {
         CommunityPost post = findPost(postId);
         User author = findUser(authorId);
@@ -114,6 +128,10 @@ public class CommunityServiceImpl implements CommunityService {
     }
 
     @Override
+    @Caching(evict = {
+        @CacheEvict(value = "feed", allEntries = true),
+        @CacheEvict(value = "post", key = "#postId")
+    })
     public void deleteComment(Long postId, Long commentId, Long actorId, boolean privileged) {
         CommunityComment comment = commentRepository.findById(commentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Comentário não encontrado"));
@@ -127,6 +145,10 @@ public class CommunityServiceImpl implements CommunityService {
     }
 
     @Override
+    @Caching(evict = {
+        @CacheEvict(value = "feed", allEntries = true),
+        @CacheEvict(value = "post", key = "#postId")
+    })
     public LikeResponse likePost(Long postId, Long userId) {
         CommunityPost post = findPost(postId);
         User user = findUser(userId);
@@ -143,6 +165,10 @@ public class CommunityServiceImpl implements CommunityService {
     }
 
     @Override
+    @Caching(evict = {
+        @CacheEvict(value = "feed", allEntries = true),
+        @CacheEvict(value = "post", key = "#postId")
+    })
     public void unlikePost(Long postId, Long userId) {
         likeRepository.findByPostIdAndUserId(postId, userId).ifPresent(likeRepository::delete);
     }

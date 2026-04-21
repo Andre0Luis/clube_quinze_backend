@@ -17,7 +17,9 @@ import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.service.appointment.AppointmentScheduleSettings;
 import br.com.clube_quinze.api.service.appointment.AppointmentService;
-import br.com.clube_quinze.api.service.notification.NotificationService;
+import br.com.clube_quinze.api.config.RabbitMQConfig;
+import br.com.clube_quinze.api.dto.notification.NotificationMessageDTO;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import br.com.clube_quinze.api.util.PageUtils;
 import java.time.Clock;
 import java.time.Duration;
@@ -49,18 +51,15 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     private final AppointmentRepository appointmentRepository;
     private final UserRepository userRepository;
-    private final br.com.clube_quinze.api.service.notification.PushNotificationService pushNotificationService;
-    private final NotificationService notificationService;
+    private final RabbitTemplate rabbitTemplate;
     private final Clock clock;
 
     public AppointmentServiceImpl(AppointmentRepository appointmentRepository, UserRepository userRepository, Clock clock,
-            br.com.clube_quinze.api.service.notification.PushNotificationService pushNotificationService,
-            NotificationService notificationService) {
+            RabbitTemplate rabbitTemplate) {
         this.appointmentRepository = appointmentRepository;
         this.userRepository = userRepository;
         this.clock = clock;
-        this.pushNotificationService = pushNotificationService;
-        this.notificationService = notificationService;
+        this.rabbitTemplate = rabbitTemplate;
     }
 
     @Override
@@ -121,9 +120,15 @@ public class AppointmentServiceImpl implements AppointmentService {
             var data = new java.util.HashMap<String, Object>();
             data.put("appointmentId", saved.getId());
             data.put("scheduledAt", saved.getScheduledAt().toString());
-            pushNotificationService.sendToUser(saved.getClient().getId(), "SCHEDULED",
-                    "Agendamento confirmado",
-                    "Seu agendamento foi criado para " + saved.getScheduledAt().toString(), data);
+            
+            var pushMap = new java.util.HashMap<String, Object>();
+            pushMap.put("userId", saved.getClient().getId());
+            pushMap.put("type", "SCHEDULED");
+            pushMap.put("title", "Agendamento confirmado");
+            pushMap.put("body", "Seu agendamento foi criado para " + saved.getScheduledAt().toString());
+            pushMap.put("data", data);
+            
+            rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("PUSH_MESSAGE", pushMap));
         } catch (Exception ignored) {
         }
         return toAppointmentResponse(saved);
@@ -161,9 +166,15 @@ public class AppointmentServiceImpl implements AppointmentService {
             var data = new java.util.HashMap<String, Object>();
             data.put("appointmentId", updated.getId());
             data.put("scheduledAt", updated.getScheduledAt().toString());
-            pushNotificationService.sendToUser(client.getId(), "RESCHEDULED",
-                    "Agendamento remarcado",
-                    "Seu agendamento foi remarcado para " + newFormatted, data);
+            
+            var pushMap = new java.util.HashMap<String, Object>();
+            pushMap.put("userId", client.getId());
+            pushMap.put("type", "RESCHEDULED");
+            pushMap.put("title", "Agendamento remarcado");
+            pushMap.put("body", "Seu agendamento foi remarcado para " + newFormatted);
+            pushMap.put("data", data);
+            
+            rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("PUSH_MESSAGE", pushMap));
         } catch (Exception ignored) {
         }
 
@@ -171,9 +182,15 @@ public class AppointmentServiceImpl implements AppointmentService {
         try {
             String oldFormatted = oldScheduledAt.format(PT_BR_FORMATTER);
             String description = updated.getNotes() != null ? updated.getNotes() : "";
-            notificationService.notifyAppointmentRescheduled(
-                    client.getEmail(), client.getName(),
-                    oldFormatted, newFormatted, description);
+            
+            var emailMap = new java.util.HashMap<String, Object>();
+            emailMap.put("email", client.getEmail());
+            emailMap.put("name", client.getName());
+            emailMap.put("oldScheduledAt", oldFormatted);
+            emailMap.put("newScheduledAt", newFormatted);
+            emailMap.put("description", description);
+            
+            rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("APPOINTMENT_RESCHEDULED_EMAIL", emailMap));
         } catch (Exception ignored) {
         }
 
@@ -193,8 +210,15 @@ public class AppointmentServiceImpl implements AppointmentService {
         try {
             if (request.status() == AppointmentStatus.CANCELED) {
                 var data = java.util.Map.<String, Object>of("appointmentId", updated.getId());
-                pushNotificationService.sendToUser(updated.getClient().getId(), "CANCELLED",
-                        "Agendamento cancelado", "Seu agendamento foi cancelado pelo clube.", data);
+                
+                var pushMap = new java.util.HashMap<String, Object>();
+                pushMap.put("userId", updated.getClient().getId());
+                pushMap.put("type", "CANCELLED");
+                pushMap.put("title", "Agendamento cancelado");
+                pushMap.put("body", "Seu agendamento foi cancelado pelo clube.");
+                pushMap.put("data", data);
+                
+                rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("PUSH_MESSAGE", pushMap));
             }
         } catch (Exception ignored) {
         }
@@ -211,8 +235,15 @@ public class AppointmentServiceImpl implements AppointmentService {
         // send immediate push notification to user about cancellation (best-effort, async)
         try {
             var data = java.util.Map.<String, Object>of("appointmentId", appointment.getId());
-            pushNotificationService.sendToUser(appointment.getClient().getId(), "CANCELLED",
-                    "Agendamento cancelado", "Seu agendamento foi cancelado pelo clube.", data);
+            
+            var pushMap = new java.util.HashMap<String, Object>();
+            pushMap.put("userId", appointment.getClient().getId());
+            pushMap.put("type", "CANCELLED");
+            pushMap.put("title", "Agendamento cancelado");
+            pushMap.put("body", "Seu agendamento foi cancelado pelo clube.");
+            pushMap.put("data", data);
+            
+            rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("PUSH_MESSAGE", pushMap));
         } catch (Exception ex) {
             // do not break cancel flow on notification errors
         }

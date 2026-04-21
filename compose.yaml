@@ -26,10 +26,15 @@ services:
       MAIL_SMTP_STARTTLS: ${MAIL_SMTP_STARTTLS}
       MAIL_SMTP_STARTTLS_REQUIRED: ${MAIL_SMTP_STARTTLS_REQUIRED}
       MAIL_FROM: ${MAIL_FROM}
+      SPRING_REDIS_HOST: redis
+      SPRING_RABBITMQ_HOST: rabbitmq
     restart: unless-stopped
     mem_limit: 768m
     mem_reservation: 256m
     cpus: "0.3"
+    depends_on:
+      - redis
+      - rabbitmq
     volumes:
       - ./uploads:/uploads
 
@@ -73,6 +78,26 @@ services:
       GZIP_LEVEL: 9
     volumes:
       - ./backups:/backup
+
+  redis:
+    image: redis:7-alpine
+    container_name: clube-quinze-redis
+    restart: unless-stopped
+    networks:
+      - mariadb-mnl3_default
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: clube-quinze-rabbitmq
+    restart: unless-stopped
+    networks:
+      - mariadb-mnl3_default
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
 
 networks:
   mariadb-mnl3_default:
