@@ -122,11 +122,16 @@ public class AuthServiceImpl implements AuthService {
         User savedUser = userRepository.save(user);
 
         // Envio de boas-vindas com credenciais (assíncrono) via RabbitMQ
-        java.util.Map<String, Object> welcomeData = new java.util.HashMap<>();
-        welcomeData.put("email", savedUser.getEmail());
-        welcomeData.put("name", savedUser.getName());
-        welcomeData.put("rawPassword", request.password());
-        rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("WELCOME_EMAIL", welcomeData));
+        // Não bloqueia o registro se o broker estiver indisponível
+        try {
+            java.util.Map<String, Object> welcomeData = new java.util.HashMap<>();
+            welcomeData.put("email", savedUser.getEmail());
+            welcomeData.put("name", savedUser.getName());
+            welcomeData.put("rawPassword", request.password());
+            rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("WELCOME_EMAIL", welcomeData));
+        } catch (Exception ex) {
+            log.warn("Falha ao enfileirar email de boas-vindas para o usuário {}: {}", savedUser.getId(), ex.getMessage());
+        }
 
         //persistPreferredAppointmentTime(savedUser, request.preferredAppointmentTime());
         // try {
