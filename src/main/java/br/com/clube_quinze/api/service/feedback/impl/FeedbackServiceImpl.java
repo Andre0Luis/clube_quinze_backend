@@ -72,12 +72,16 @@ public class FeedbackServiceImpl implements FeedbackService {
 
         Feedback saved = feedbackRepository.save(feedback);
 
-        // Notificar de forma assíncrona via fila
-        java.util.Map<String, Object> data = new java.util.HashMap<>();
-        data.put("userId", client.getId());
-        data.put("appointmentId", appointment.getId());
-        data.put("rating", request.rating());
-        rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("FEEDBACK_RECEIVED", data));
+        // Notificar de forma assíncrona via fila (best-effort, não bloqueia se broker indisponível)
+        try {
+            java.util.Map<String, Object> data = new java.util.HashMap<>();
+            data.put("userId", client.getId());
+            data.put("appointmentId", appointment.getId());
+            data.put("rating", request.rating());
+            rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("FEEDBACK_RECEIVED", data));
+        } catch (Exception ex) {
+            // log silencioso — falha de notificação não impede o feedback
+        }
 
         return toResponse(saved);
     }

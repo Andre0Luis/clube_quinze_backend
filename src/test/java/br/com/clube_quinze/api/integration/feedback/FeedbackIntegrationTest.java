@@ -68,16 +68,15 @@ class FeedbackIntegrationTest extends AbstractIntegrationTest {
         ResponseEntity<Map> meRes = get("/api/v1/users/me", memberToken, Map.class);
         memberId = ((Number) meRes.getBody().get("id")).longValue();
 
-        // Cria agendamento futuro com horário variável para evitar conflito de slot entre testes
-        int dayOffset = 7 + Math.abs(UUID.randomUUID().hashCode() % 20);
-        int slotOffset = Math.abs(UUID.randomUUID().hashCode() % 12);
+        // Cria agendamento futuro com data e hora bem aleatórias para evitar conflito de slot entre setups
+        int dayOffset = 14 + Math.abs(UUID.randomUUID().hashCode() % 60);  // 14 a 73 dias
+        int hour = 9 + Math.abs(UUID.randomUUID().hashCode() % 11);        // 9h a 19h
         LocalDateTime scheduledAt = LocalDateTime.now()
             .plusDays(dayOffset)
-            .withHour(9)
+            .withHour(hour)
             .withMinute(0)
             .withSecond(0)
-            .withNano(0)
-            .plusMinutes(slotOffset * 30L);
+            .withNano(0);
         Map<String, Object> apptReq = Map.of(
                 "clientId", memberId,
                 "scheduledAt", scheduledAt.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
