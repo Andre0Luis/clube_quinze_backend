@@ -63,7 +63,10 @@ public class AppointmentController {
                 request.appointmentTier(),
                 request.serviceType(),
                 request.notes(),
-                request.durationMinutes());
+                request.durationMinutes(),
+                false,
+                null,
+                null);
         AppointmentResponse response =
                 appointmentService.schedule(user.getId(), privileged, normalizedRequest);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);

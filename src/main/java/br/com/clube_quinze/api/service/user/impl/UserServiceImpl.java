@@ -21,6 +21,7 @@ import br.com.clube_quinze.api.model.enumeration.MembershipTier;
 import br.com.clube_quinze.api.model.enumeration.RoleType;
 import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.PlanRepository;
+import br.com.clube_quinze.api.repository.RefreshTokenRepository;
 import br.com.clube_quinze.api.repository.UserPreferenceRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.service.user.UserService;
@@ -46,6 +47,7 @@ public class UserServiceImpl implements UserService {
     private final PlanRepository planRepository;
     private final AppointmentRepository appointmentRepository;
     private final UserPreferenceRepository userPreferenceRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final Clock clock;
 
     public UserServiceImpl(
@@ -53,11 +55,13 @@ public class UserServiceImpl implements UserService {
             PlanRepository planRepository,
             AppointmentRepository appointmentRepository,
             UserPreferenceRepository userPreferenceRepository,
+            RefreshTokenRepository refreshTokenRepository,
             Clock clock) {
         this.userRepository = userRepository;
         this.planRepository = planRepository;
         this.appointmentRepository = appointmentRepository;
         this.userPreferenceRepository = userPreferenceRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
         this.clock = clock;
     }
 
@@ -173,6 +177,7 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException("Sem permissão para excluir este usuário");
         }
         User target = findUser(targetUserId);
+        refreshTokenRepository.deleteByUserId(targetUserId);
         userRepository.delete(target);
     }
 
@@ -268,7 +273,9 @@ public class UserServiceImpl implements UserService {
                 appointment.getStatus(),
                 appointment.getServiceType(),
                 appointment.getNotes(),
-                appointment.getDurationMinutes());
+                appointment.getDurationMinutes(),
+                appointment.getRecurrenceGroupId(),
+                appointment.getRecurrencePeriod());
     }
 
     private PreferenceResponse toPreferenceResponse(UserPreference preference) {

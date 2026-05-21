@@ -56,6 +56,17 @@ public class Appointment {
     @Column(length = 2048)
     private String notes;
 
+    /** UUID compartilhado por todos os agendamentos de uma série recorrente. */
+    @Column(name = "recurrence_group_id", length = 36)
+    private String recurrenceGroupId;
+
+    /**
+     * Periodicidade da recorrência: WEEKLY, BIWEEKLY ou MONTHLY.
+     * Nulo se o agendamento não for recorrente.
+     */
+    @Column(name = "recurrence_period", length = 20)
+    private String recurrencePeriod;
+
     @PrePersist
     void prePersist() {
         LocalDateTime now = LocalDateTime.now();
@@ -146,5 +157,21 @@ public class Appointment {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getRecurrenceGroupId() {
+        return recurrenceGroupId;
+    }
+
+    public void setRecurrenceGroupId(String recurrenceGroupId) {
+        this.recurrenceGroupId = recurrenceGroupId;
+    }
+
+    public String getRecurrencePeriod() {
+        return recurrencePeriod;
+    }
+
+    public void setRecurrencePeriod(String recurrencePeriod) {
+        this.recurrencePeriod = recurrencePeriod;
     }
 }

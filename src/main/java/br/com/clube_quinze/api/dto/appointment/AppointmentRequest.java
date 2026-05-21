@@ -21,5 +21,9 @@ public record AppointmentRequest(
         String serviceType,
 
         String notes,
-        Integer durationMinutes) {
+        Integer durationMinutes,
+        
+        Boolean recurring,
+        String recurrencePeriod,
+        Integer recurrenceMonths) {
 }

@@ -67,7 +67,7 @@ class EmailNotificationServiceTest {
 
     @Test
     void notifyPasswordReset_rendersTemplateAndSendsEmail() throws Exception {
-        when(templateEngine.process(eq("forgot-passworld"), any(Context.class))).thenReturn("<html>Redefinir</html>");
+        when(templateEngine.process(eq("forgot-password"), any(Context.class))).thenReturn("<html>Redefinir</html>");
 
         subject.notifyPasswordReset("user@example.com", "André", "https://link/reset?token=abc");
 
@@ -79,7 +79,7 @@ class EmailNotificationServiceTest {
         assertEquals("<html>Redefinir</html>", mimeMessage.getContent().toString().trim());
 
         ArgumentCaptor<Context> contextCaptor = ArgumentCaptor.forClass(Context.class);
-        verify(templateEngine).process(eq("forgot-passworld"), contextCaptor.capture());
+        verify(templateEngine).process(eq("forgot-password"), contextCaptor.capture());
         Context captured = contextCaptor.getValue();
         assertEquals("André", captured.getVariable("name"));
         assertEquals("https://link/reset?token=abc", captured.getVariable("resetLink"));

@@ -14,5 +14,7 @@ public record AppointmentResponse(
         AppointmentStatus status,
         String serviceType,
         String notes,
-        Integer durationMinutes) implements Serializable {
+        Integer durationMinutes,
+        String recurrenceGroupId,
+        String recurrencePeriod) implements Serializable {
 }

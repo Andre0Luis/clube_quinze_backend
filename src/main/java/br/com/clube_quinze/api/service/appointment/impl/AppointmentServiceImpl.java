@@ -77,21 +77,44 @@ public class AppointmentServiceImpl implements AppointmentService {
         List<Appointment> appointments = appointmentRepository.findByScheduledAtBetween(dayStart, dayEnd);
         Set<LocalDateTime> occupiedSlots = new HashSet<>();
         for (Appointment appointment : appointments) {
-            occupiedSlots.add(appointment.getScheduledAt());
+            if (appointment.getStatus() != AppointmentStatus.CANCELED) {
+                LocalDateTime curr = appointment.getScheduledAt();
+                LocalDateTime end = curr.plusMinutes(appointment.getDurationMinutes());
+                while (curr.isBefore(end)) {
+                    occupiedSlots.add(curr);
+                    curr = curr.plusMinutes(SLOT_DURATION.toMinutes());
+                }
+            }
         }
+
+        Duration durationNeeded = effectiveTier == MembershipTier.QUINZE_SELECT ? Duration.ofMinutes(120) : SLOT_DURATION;
+        Duration step = effectiveTier == MembershipTier.QUINZE_SELECT ? Duration.ofMinutes(120) : SLOT_DURATION;
 
         List<LocalDateTime> available = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now(clock);
         LocalDateTime slot = dayStart;
-        LocalDateTime lastPossibleSlot = dayEnd.minus(SLOT_DURATION);
+        LocalDateTime lastPossibleSlot = dayEnd.minus(durationNeeded);
+        
         while (!slot.isAfter(lastPossibleSlot)) {
-            if (slot.isAfter(now) && !occupiedSlots.contains(slot)) {
+            if (slot.isAfter(now) && isIntervalFree(slot, durationNeeded, occupiedSlots)) {
                 available.add(slot);
             }
-            slot = slot.plus(SLOT_DURATION);
+            slot = slot.plus(step);
         }
 
         return new AvailableSlotResponse(date, effectiveTier, available);
+    }
+
+    private boolean isIntervalFree(LocalDateTime start, Duration duration, Set<LocalDateTime> occupied) {
+        LocalDateTime curr = start;
+        LocalDateTime end = start.plus(duration);
+        while (curr.isBefore(end)) {
+            if (occupied.contains(curr)) {
+                return false;
+            }
+            curr = curr.plus(SLOT_DURATION);
+        }
+        return true;
     }
 
     @Override
@@ -103,19 +126,75 @@ public class AppointmentServiceImpl implements AppointmentService {
         validateClientForTier(client, request.appointmentTier());
         validateAppointmentDate(request.scheduledAt());
         validateBusinessHours(request.scheduledAt());
-        ensureSlotAvailable(request.scheduledAt(), null);
+        
+        int duration = resolveDuration(request);
+        ensureSlotAvailable(request.scheduledAt(), duration, null);
 
+        if (Boolean.TRUE.equals(request.recurring()) && request.recurrencePeriod() != null && request.recurrenceMonths() != null) {
+            return scheduleRecurring(client, request, duration);
+        }
+
+        Appointment saved = createSingleAppointment(client, request, request.scheduledAt(), duration, null, null);
+        sendSchedulePush(saved);
+        return toAppointmentResponse(saved);
+    }
+
+    private Appointment createSingleAppointment(User client, AppointmentRequest request, LocalDateTime date, int duration, String groupId, String period) {
         Appointment appointment = new Appointment();
         appointment.setClient(client);
-        appointment.setScheduledAt(request.scheduledAt());
+        appointment.setScheduledAt(date);
         appointment.setAppointmentTier(request.appointmentTier());
         appointment.setServiceType(request.serviceType());
         appointment.setNotes(request.notes());
         appointment.setStatus(AppointmentStatus.SCHEDULED);
-        appointment.setDurationMinutes(resolveDuration(request));
+        appointment.setDurationMinutes(duration);
+        appointment.setRecurrenceGroupId(groupId);
+        appointment.setRecurrencePeriod(period);
+        return appointmentRepository.save(appointment);
+    }
 
-        Appointment saved = appointmentRepository.save(appointment);
-        // best-effort push confirmation
+    private AppointmentResponse scheduleRecurring(User client, AppointmentRequest request, int duration) {
+        String groupId = java.util.UUID.randomUUID().toString();
+        String period = request.recurrencePeriod();
+        int months = request.recurrenceMonths();
+        
+        LocalDateTime current = request.scheduledAt();
+        LocalDateTime endLimit = current.plusMonths(months);
+        
+        Appointment firstAppointment = null;
+        
+        while (current.isBefore(endLimit)) {
+            try {
+                // Ensure slot is available before attempting to create
+                ensureSlotAvailable(current, duration, null);
+                Appointment saved = createSingleAppointment(client, request, current, duration, groupId, period);
+                if (firstAppointment == null) {
+                    firstAppointment = saved;
+                    sendSchedulePush(saved); // Only push for the first one to avoid spam
+                }
+            } catch (BusinessException e) {
+                // Skip if unavailable
+            }
+            
+            if ("WEEKLY".equals(period)) {
+                current = current.plusWeeks(1);
+            } else if ("BIWEEKLY".equals(period)) {
+                current = current.plusWeeks(2);
+            } else if ("MONTHLY".equals(period)) {
+                current = current.plusMonths(1);
+            } else {
+                break; // safeguard
+            }
+        }
+        
+        if (firstAppointment == null) {
+            throw new BusinessException("Nenhum horário disponível para criar a série de agendamentos");
+        }
+        
+        return toAppointmentResponse(firstAppointment);
+    }
+
+    private void sendSchedulePush(Appointment saved) {
         try {
             var data = new java.util.HashMap<String, Object>();
             data.put("appointmentId", saved.getId());
@@ -131,7 +210,6 @@ public class AppointmentServiceImpl implements AppointmentService {
             rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("PUSH_MESSAGE", pushMap));
         } catch (Exception ignored) {
         }
-        return toAppointmentResponse(saved);
     }
 
     @Override
@@ -149,7 +227,9 @@ public class AppointmentServiceImpl implements AppointmentService {
 
         validateAppointmentDate(request.newDate());
         validateBusinessHours(request.newDate());
-        ensureSlotAvailable(request.newDate(), appointment.getId());
+        
+        int duration = appointment.getDurationMinutes();
+        ensureSlotAvailable(request.newDate(), duration, appointment.getId());
 
         appointment.setScheduledAt(request.newDate());
         if (request.notes() != null && !request.notes().isBlank()) {
@@ -318,16 +398,27 @@ public class AppointmentServiceImpl implements AppointmentService {
         return PageUtils.toResponse(appointmentPage);
     }
 
-    private void ensureSlotAvailable(LocalDateTime scheduledAt, Long appointmentIdToIgnore) {
-        boolean conflict;
-        if (appointmentIdToIgnore == null) {
-            conflict = appointmentRepository.existsByScheduledAt(scheduledAt);
-        } else {
-            conflict = appointmentRepository.existsByScheduledAtAndIdNot(scheduledAt, appointmentIdToIgnore);
-        }
+    private void ensureSlotAvailable(LocalDateTime scheduledAt, Integer durationMinutes, Long appointmentIdToIgnore) {
+        LocalDateTime dayStart = scheduledAt.toLocalDate().atTime(OPENING_TIME);
+        LocalDateTime dayEnd = scheduledAt.toLocalDate().atTime(CLOSING_TIME);
+        List<Appointment> appointments = appointmentRepository.findByScheduledAtBetween(dayStart, dayEnd);
+        
+        LocalDateTime requestEnd = scheduledAt.plusMinutes(durationMinutes != null ? durationMinutes : 60);
 
-        if (conflict) {
-            throw new BusinessException("Horário indisponível para agendamento");
+        for (Appointment existing : appointments) {
+            if (appointmentIdToIgnore != null && existing.getId().equals(appointmentIdToIgnore)) {
+                continue;
+            }
+            if (existing.getStatus() == AppointmentStatus.CANCELED) {
+                continue;
+            }
+            LocalDateTime existingStart = existing.getScheduledAt();
+            LocalDateTime existingEnd = existingStart.plusMinutes(existing.getDurationMinutes());
+
+            // Verifica sobreposição de horários
+            if (scheduledAt.isBefore(existingEnd) && existingStart.isBefore(requestEnd)) {
+                throw new BusinessException("Horário indisponível para agendamento");
+            }
         }
     }
 
@@ -389,7 +480,9 @@ public class AppointmentServiceImpl implements AppointmentService {
                 appointment.getStatus(),
                 appointment.getServiceType(),
                 appointment.getNotes(),
-                appointment.getDurationMinutes());
+                appointment.getDurationMinutes(),
+                appointment.getRecurrenceGroupId(),
+                appointment.getRecurrencePeriod());
     }
 
     private int resolveDuration(AppointmentRequest request) {

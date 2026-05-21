@@ -52,7 +52,10 @@ public class RecurringAppointmentScheduler {
                     tier,
                     null,
                     "Agendamento recorrente automático",
-                    durationMinutes);
+                    durationMinutes,
+                    false,
+                    null,
+                    null);
             try {
                 appointmentService.schedule(user.getId(), false, request);
             } catch (BusinessException ex) {
