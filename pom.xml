@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>br.com.clube_quinze</groupId>
 	<artifactId>api</artifactId>
-	<version>1.0.2</version>
+	<version>1.15.0</version>
 	<name>clube_quinze</name>
 	<description>Clube Quinze backend services</description>
 	<url/>
@@ -138,6 +138,11 @@
 			<groupId>org.springframework.security</groupId>
 			<artifactId>spring-security-test</artifactId>
 			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.google.firebase</groupId>
+			<artifactId>firebase-admin</artifactId>
+			<version>9.4.2</version>
 		</dependency>
 		<dependency>
 			<groupId>org.testcontainers</groupId>
