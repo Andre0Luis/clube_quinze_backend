@@ -39,6 +39,11 @@ public class FcmPushServiceImpl implements ExpoPushService {
 
     @Override
     public List<ExpoResult> sendBatch(List<ExpoMessage> messages) {
+        return sendBatch(messages, false);
+    }
+
+    @Override
+    public List<ExpoResult> sendBatch(List<ExpoMessage> messages, boolean dryRun) {
         if (messages.isEmpty()) return List.of();
 
         List<Message> fcmMessages = new ArrayList<>();
@@ -57,7 +62,7 @@ public class FcmPushServiceImpl implements ExpoPushService {
         }
 
         try {
-            BatchResponse batch = firebaseMessaging.sendEach(fcmMessages);
+            BatchResponse batch = firebaseMessaging.sendEach(fcmMessages, dryRun);
             List<ExpoResult> results = new ArrayList<>();
 
             List<SendResponse> responses = batch.getResponses();
@@ -70,21 +75,37 @@ public class FcmPushServiceImpl implements ExpoPushService {
                     String code = ex.getMessagingErrorCode() != null
                             ? ex.getMessagingErrorCode().name()
                             : "UNKNOWN";
+                    // Log por mensagem com token mascarado: é o que faltava para debugar a causa real.
+                    log.warn("FCM send failed (dryRun={}) token={} code={} httpResponse={} msg={}",
+                            dryRun, maskToken(messages.get(i).to()), code,
+                            httpStatus(ex), ex.getMessage());
                     results.add(new ExpoResult(false, "error", code));
                     invalidateIfStale(messages.get(i).to(), ex.getMessagingErrorCode());
                 }
             }
-            log.info("FCM batch: {} sent, {} failed", batch.getSuccessCount(), batch.getFailureCount());
+            log.info("FCM batch (dryRun={}): {} sent, {} failed", dryRun,
+                    batch.getSuccessCount(), batch.getFailureCount());
             return results;
 
         } catch (FirebaseMessagingException e) {
-            log.error("FCM sendEach failed: {}", e.getMessage());
+            // Falha global (ex.: credencial inválida / projeto errado) — afeta TODAS as mensagens.
+            String code = e.getMessagingErrorCode() != null ? e.getMessagingErrorCode().name() : "UNKNOWN";
+            log.error("FCM sendEach failed globally (dryRun={}) code={} msg={}", dryRun, code, e.getMessage(), e);
             List<ExpoResult> failures = new ArrayList<>();
             for (int i = 0; i < messages.size(); i++) {
-                failures.add(new ExpoResult(false, "error", e.getMessage()));
+                failures.add(new ExpoResult(false, "error", code + ": " + e.getMessage()));
             }
             return failures;
         }
+    }
+
+    private String maskToken(String token) {
+        if (token == null || token.length() <= 12) return "***";
+        return token.substring(0, 6) + "…" + token.substring(token.length() - 6);
+    }
+
+    private String httpStatus(FirebaseMessagingException ex) {
+        return ex.getHttpResponse() != null ? String.valueOf(ex.getHttpResponse().getStatusCode()) : "n/a";
     }
 
     private void invalidateIfStale(String token, MessagingErrorCode errorCode) {

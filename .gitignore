@@ -56,3 +56,7 @@ Thumbs.db
 # Firebase service accounts — never commit private keys
 *-firebase-adminsdk-*.json
 firebase-service-account.json
+# Secrets montados por volume no Docker (Firebase service account, etc.)
+secrets/*
+!secrets/.gitkeep
+!secrets/README.md

@@ -28,6 +28,10 @@ services:
       MAIL_FROM: ${MAIL_FROM}
       SPRING_REDIS_HOST: redis
       SPRING_RABBITMQ_HOST: rabbitmq
+      # Credencial do Firebase entregue como ARQUIVO montado por volume (determinístico,
+      # sem o inferno de escapar JSON multilinha no .env). Coloque o service account em
+      # ./secrets/firebase-service-account.json no VPS (ver .gitignore).
+      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-file:/run/secrets/firebase/firebase-service-account.json}
     restart: unless-stopped
     mem_limit: 768m
     mem_reservation: 256m
@@ -37,6 +41,7 @@ services:
       - rabbitmq
     volumes:
       - ./uploads:/uploads
+      - ./secrets:/run/secrets/firebase:ro
 
   nginx:
     image: nginx:1.25-alpine

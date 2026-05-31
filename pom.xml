@@ -31,6 +31,13 @@
 		<jjwt.version>0.11.5</jjwt.version>
 		<flyway.version>10.21.0</flyway.version>
 		<springdoc.version>2.7.0</springdoc.version>
+		<!--
+			Alinha google-auth-library. firebase-admin 9.4.2 traz credentials:1.23.0 (vence por "nearest"),
+			mas gax/api-common puxam oauth2-http:1.29.0. O 1.29.0 referencia com.google.auth.CredentialTypeForMetrics,
+			classe ausente no credentials:1.23.0 -> NoClassDefFoundError ao renovar o access token (todo push falha).
+			Forçamos os DOIS na mesma versão para eliminar o skew.
+		-->
+		<google-auth.version>1.29.0</google-auth.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -155,6 +162,22 @@
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
+
+	<dependencyManagement>
+		<dependencies>
+			<!-- Mantém credentials e oauth2-http do google-auth na mesma versão (ver nota em <properties>). -->
+			<dependency>
+				<groupId>com.google.auth</groupId>
+				<artifactId>google-auth-library-credentials</artifactId>
+				<version>${google-auth.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.google.auth</groupId>
+				<artifactId>google-auth-library-oauth2-http</artifactId>
+				<version>${google-auth.version}</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 
 	<build>
 		<plugins>
