@@ -1,8 +1,12 @@
 package br.com.clube_quinze.api.controller;
 
+import br.com.clube_quinze.api.dto.common.NotificationResponse;
 import br.com.clube_quinze.api.dto.notifications.PushTokenRequest;
+import br.com.clube_quinze.api.exception.ResourceNotFoundException;
 import br.com.clube_quinze.api.exception.UnauthorizedException;
+import br.com.clube_quinze.api.model.notification.Notification;
 import br.com.clube_quinze.api.model.notification.PushToken;
+import br.com.clube_quinze.api.repository.NotificationRepository;
 import br.com.clube_quinze.api.repository.PushTokenRepository;
 import br.com.clube_quinze.api.security.ClubeQuinzeUserDetails;
 import br.com.clube_quinze.api.service.notification.ExpoPushService;
@@ -16,6 +20,9 @@ import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -30,13 +37,84 @@ public class NotificationController {
     private final PushTokenRepository pushTokenRepository;
     private final PushNotificationService pushNotificationService;
     private final ExpoPushService expoPushService;
+    private final NotificationRepository notificationRepository;
 
     public NotificationController(PushTokenRepository pushTokenRepository,
                                   PushNotificationService pushNotificationService,
-                                  ExpoPushService expoPushService) {
+                                  ExpoPushService expoPushService,
+                                  NotificationRepository notificationRepository) {
         this.pushTokenRepository = pushTokenRepository;
         this.pushNotificationService = pushNotificationService;
         this.expoPushService = expoPushService;
+        this.notificationRepository = notificationRepository;
+    }
+
+    /** Lista as notificações in-app do usuário autenticado (mais recentes primeiro). */
+    @GetMapping
+    public ResponseEntity<List<NotificationResponse>> listMyNotifications(
+            @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser) {
+        Long userId = requireUser(currentUser);
+        List<NotificationResponse> items = notificationRepository
+                .findTop100ByUserIdOrderBySentAtDesc(userId)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+        return ResponseEntity.ok(items);
+    }
+
+    /** Contagem de não-lidas — para o badge do ícone de notificações. */
+    @GetMapping("/unread-count")
+    public ResponseEntity<Map<String, Object>> unreadCount(
+            @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser) {
+        Long userId = requireUser(currentUser);
+        return ResponseEntity.ok(Map.of("count", notificationRepository.countByUserIdAndReadFalse(userId)));
+    }
+
+    /** Marca uma notificação como lida (apenas se pertencer ao usuário). */
+    @PatchMapping("/{id}/read")
+    @Transactional
+    public ResponseEntity<Void> markRead(
+            @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser,
+            @PathVariable Long id) {
+        Long userId = requireUser(currentUser);
+        Notification n = notificationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Notificação não encontrada"));
+        if (n.getUser() == null || !userId.equals(n.getUser().getId())) {
+            throw new UnauthorizedException("Notificação não pertence ao usuário");
+        }
+        if (!n.isRead()) {
+            n.setRead(true);
+            notificationRepository.save(n);
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Marca todas as notificações do usuário como lidas. */
+    @PostMapping("/read-all")
+    @Transactional
+    public ResponseEntity<Void> markAllRead(
+            @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser) {
+        Long userId = requireUser(currentUser);
+        notificationRepository.markAllAsReadForUser(userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    private Long requireUser(ClubeQuinzeUserDetails currentUser) {
+        if (currentUser == null) {
+            throw new UnauthorizedException("Usuário não autenticado");
+        }
+        return currentUser.getId();
+    }
+
+    private NotificationResponse toResponse(Notification n) {
+        return new NotificationResponse(
+                n.getId(),
+                n.getUser() != null ? n.getUser().getId() : null,
+                n.getTitle(),
+                n.getMessage(),
+                n.getType(),
+                n.isRead(),
+                n.getSentAt());
     }
 
     @PostMapping("/tokens")

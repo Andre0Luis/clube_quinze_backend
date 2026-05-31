@@ -5,6 +5,8 @@ import br.com.clube_quinze.api.dto.notification.NotificationMessageDTO;
 import br.com.clube_quinze.api.model.appointment.Appointment;
 import br.com.clube_quinze.api.model.enumeration.AppointmentStatus;
 import br.com.clube_quinze.api.model.user.User;
+import br.com.clube_quinze.api.model.notification.AppointmentReminderLog;
+import br.com.clube_quinze.api.repository.AppointmentReminderLogRepository;
 import br.com.clube_quinze.api.repository.AppointmentRepository;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -27,6 +29,7 @@ public class AppointmentNotificationScheduler {
             DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm", new Locale("pt", "BR"));
 
     private final AppointmentRepository appointmentRepository;
+    private final AppointmentReminderLogRepository reminderLogRepository;
     private final RabbitTemplate rabbitTemplate;
 
     // Reminder config: offset in minutes and user-friendly label
@@ -40,10 +43,16 @@ public class AppointmentNotificationScheduler {
             "amanhã", "em 3 horas", "em 1 hora", "em 30 minutos"
     };
 
+    // Catch-up: tolera ticks perdidos (deploy/restart/VPS lento) sem perder o lembrete.
+    // Maior que a janela de 1 min original; combinado com o log de idempotência, nunca duplica.
+    private static final int GRACE_MINUTES = 10;
+
     public AppointmentNotificationScheduler(
             AppointmentRepository appointmentRepository,
+            AppointmentReminderLogRepository reminderLogRepository,
             RabbitTemplate rabbitTemplate) {
         this.appointmentRepository = appointmentRepository;
+        this.reminderLogRepository = reminderLogRepository;
         this.rabbitTemplate = rabbitTemplate;
     }
 
@@ -51,24 +60,29 @@ public class AppointmentNotificationScheduler {
     @Scheduled(cron = "0 */1 * * * *")
     public void scanAndSendReminders() {
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
-        LocalDateTime windowEnd = now.plusMinutes(1);
 
         for (int i = 0; i < REMINDER_OFFSETS.length; i++) {
             int offsetMinutes = REMINDER_OFFSETS[i][0];
             int labelIndex = REMINDER_OFFSETS[i][1];
             String offsetLabel = OFFSET_LABELS[labelIndex];
 
-            // Find appointments whose scheduledAt is between now+offset and windowEnd+offset
-            LocalDateTime apptStart = now.plusMinutes(offsetMinutes);
-            LocalDateTime apptEnd = windowEnd.plusMinutes(offsetMinutes);
+            // Janela de varredura: agendamentos cujo "horário de lembrete" (scheduledAt - offset)
+            // ocorreu nos últimos GRACE minutos. Assim um tick perdido (deploy/VPS lento) é recuperado,
+            // e a idempotência (reminderLogRepository) impede qualquer duplicação.
+            LocalDateTime apptStart = now.plusMinutes(offsetMinutes - GRACE_MINUTES);
+            LocalDateTime apptEnd = now.plusMinutes(offsetMinutes);
 
             List<Appointment> appts = appointmentRepository.findByStatusAndBetween(
                     AppointmentStatus.SCHEDULED, apptStart, apptEnd);
             if (appts.isEmpty()) continue;
 
-            log.info("Enfileirando {} lembretes para {} min ({})", appts.size(), offsetMinutes, offsetLabel);
-
+            int enqueued = 0;
             for (Appointment a : appts) {
+                // Idempotência: pula se este (agendamento, offset) já foi enfileirado.
+                if (reminderLogRepository.existsByAppointmentIdAndOffsetMinutes(a.getId(), offsetMinutes)) {
+                    continue;
+                }
+
                 User client = a.getClient();
                 String formattedDate = a.getScheduledAt().format(PT_BR_FORMATTER);
                 String description = a.getNotes() != null ? a.getNotes() : "";
@@ -98,6 +112,18 @@ public class AppointmentNotificationScheduler {
                         RabbitMQConfig.NOTIFICATION_ROUTING_KEY,
                         new NotificationMessageDTO("APPOINTMENT_REMINDER_EMAIL", emailData)
                 );
+
+                // Marca como enviado (idempotência). Best-effort: se falhar, não relança.
+                try {
+                    reminderLogRepository.save(new AppointmentReminderLog(a.getId(), offsetMinutes));
+                } catch (Exception ex) {
+                    log.warn("Falha ao registrar log de lembrete (appt={}, offset={}): {}",
+                            a.getId(), offsetMinutes, ex.getMessage());
+                }
+                enqueued++;
+            }
+            if (enqueued > 0) {
+                log.info("Enfileirados {} lembretes para offset {} min ({})", enqueued, offsetMinutes, offsetLabel);
             }
         }
     }
