@@ -44,6 +44,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -99,6 +100,9 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
+    // Evict da lista de membros: garante que um novo cadastro apareça na listagem do admin
+    // mesmo quando o cache (Redis) estiver ligado. No-op enquanto spring.cache.type=none.
+    @CacheEvict(cacheNames = "userList", allEntries = true)
     public AuthResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.email())) {
             throw new BusinessException("Email já cadastrado");
