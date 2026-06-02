@@ -21,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -150,6 +151,20 @@ public class NotificationController {
                 });
 
         return ResponseEntity.ok().build();
+    }
+
+    /** Desativa push do usuário: invalida todos os tokens ativos (toggle "desabilitar" no app). */
+    @DeleteMapping("/tokens")
+    @Transactional
+    public ResponseEntity<Void> disableMyTokens(
+            @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser) {
+        Long userId = requireUser(currentUser);
+        Instant now = Instant.now();
+        pushTokenRepository.findByUserIdAndInvalidatedAtIsNull(userId).forEach(t -> {
+            t.setInvalidatedAt(now);
+            pushTokenRepository.save(t);
+        });
+        return ResponseEntity.noContent().build();
     }
 
     /**
