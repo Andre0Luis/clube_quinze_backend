@@ -59,6 +59,14 @@ public enum TestNotificationType {
             "🔄 Agendamento reagendado",
             "Seu agendamento foi remarcado para " + formattedNow(60 * 48),
             Map.of("kind", "rescheduled", "appointmentId", "0")
+    ),
+
+    /** Simula a notificação de cancelamento pelo clube. */
+    CANCELLED(
+            "CANCELLED",
+            "❌ Agendamento cancelado",
+            "Seu agendamento foi cancelado pelo clube.",
+            Map.of("kind", "cancelled", "appointmentId", "0")
     );
 
     // ── campos ────────────────────────────────────────────────────────────────
