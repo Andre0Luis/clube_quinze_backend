@@ -22,17 +22,27 @@ public class AdminDashboardController {
         this.adminDashboardService = adminDashboardService;
     }
 
-    @GetMapping("/summary")
+    /** GET /api/v1/admin/dashboard — chamado pelo app mobile */
+    @GetMapping
     @Operation(summary = "Resumo do dashboard administrativo")
+    @PreAuthorize("hasAnyRole('CLUB_EMPLOYE','CLUB_ADMIN')")
+    public ResponseEntity<DashboardSummary> getDashboard(
+            @RequestParam(defaultValue = "5") int upcomingAppointmentsLimit,
+            @RequestParam(defaultValue = "5") int upcomingPaymentsLimit,
+            @RequestParam(defaultValue = "30") int renewalWindowDays) {
+        return ResponseEntity.ok(adminDashboardService.getSummary(
+                upcomingAppointmentsLimit, upcomingPaymentsLimit, renewalWindowDays));
+    }
+
+    /** GET /api/v1/admin/dashboard/summary — alias mantido para compatibilidade */
+    @GetMapping("/summary")
+    @Operation(summary = "Resumo do dashboard administrativo (alias)")
     @PreAuthorize("hasAnyRole('CLUB_EMPLOYE','CLUB_ADMIN')")
     public ResponseEntity<DashboardSummary> getSummary(
             @RequestParam(defaultValue = "5") int upcomingAppointmentsLimit,
             @RequestParam(defaultValue = "5") int upcomingPaymentsLimit,
             @RequestParam(defaultValue = "30") int renewalWindowDays) {
-        DashboardSummary summary = adminDashboardService.getSummary(
-                upcomingAppointmentsLimit,
-                upcomingPaymentsLimit,
-                renewalWindowDays);
-        return ResponseEntity.ok(summary);
+        return ResponseEntity.ok(adminDashboardService.getSummary(
+                upcomingAppointmentsLimit, upcomingPaymentsLimit, renewalWindowDays));
     }
 }
