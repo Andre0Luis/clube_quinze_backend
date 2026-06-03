@@ -21,7 +21,12 @@ RUN ./mvnw -B -DskipTests clean package && \
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-ENV JAVA_OPTS=""
+# Flags otimizadas para container em VPS com pouca RAM/CPU:
+# - UseContainerSupport: respeita os cgroups do container (evita over-commit de memória)
+# - MaxRAMPercentage: usa até 75% da RAM disponível para heap
+# - TieredCompilation + nível 4: mantém JIT completo mas prioriza startup
+# - G1GC: coleta de lixo equilibrada entre latência e throughput
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=30.0 -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom"
 ENV APP_VERSION_FILE="/app/app.version"
 # Copia qualquer JAR gerado pelo build (evita quebrar quando a versão do artefato muda)
 COPY --from=builder /workspace/target/*.jar /app/app.jar
