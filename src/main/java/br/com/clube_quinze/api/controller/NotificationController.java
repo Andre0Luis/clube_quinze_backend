@@ -2,6 +2,7 @@ package br.com.clube_quinze.api.controller;
 
 import br.com.clube_quinze.api.dto.common.NotificationResponse;
 import br.com.clube_quinze.api.dto.notifications.PushTokenRequest;
+import br.com.clube_quinze.api.dto.notifications.TestNotificationType;
 import br.com.clube_quinze.api.exception.ResourceNotFoundException;
 import br.com.clube_quinze.api.exception.UnauthorizedException;
 import br.com.clube_quinze.api.model.notification.Notification;
@@ -171,25 +172,33 @@ public class NotificationController {
      * Endpoint de diagnóstico FCM. Admin-only. Valida a integração Firebase end-to-end e
      * retorna o resultado real por token (não mascara o erro).
      *
-     * <p>Use {@code ?dryRun=true} para validar credencial + token sem entregar a notificação
-     * ao dispositivo (suportado pelo FCM). Útil para provar que o pipeline está correto sem
-     * spammar um device real.
+     * <p>Use {@code ?type} para simular cada tipo de notificação que o sistema envia em produção:
+     * <ul>
+     *   <li>TEST (padrão) — verifica que o FCM está funcionando</li>
+     *   <li>REMINDER_24H / REMINDER_3H / REMINDER_1H / REMINDER_30MIN — lembretes de agendamento</li>
+     *   <li>RESCHEDULED — reagendamento</li>
+     * </ul>
+     *
+     * <p>Use {@code ?dryRun=true} para validar credencial + token sem entregar ao dispositivo.
      *
      * Exemplos:
-     *   POST /api/v1/notifications/test/42            (entrega de verdade)
-     *   POST /api/v1/notifications/test/42?dryRun=true (só valida)
+     *   POST /api/v1/notifications/test/42                              (teste simples)
+     *   POST /api/v1/notifications/test/42?type=REMINDER_1H             (simula lembrete 1h)
+     *   POST /api/v1/notifications/test/42?type=RESCHEDULED&dryRun=true (dry-run reagendamento)
      *   Authorization: Bearer &lt;admin-token&gt;
      */
     @PostMapping("/test/{userId}")
     @PreAuthorize("hasRole('CLUB_ADMIN')")
     public ResponseEntity<Map<String, Object>> sendTest(
             @PathVariable Long userId,
+            @RequestParam(defaultValue = "TEST") TestNotificationType type,
             @RequestParam(defaultValue = "false") boolean dryRun) {
 
         List<PushToken> tokens = pushTokenRepository.findByUserIdAndInvalidatedAtIsNull(userId);
 
         Map<String, Object> response = new HashMap<>();
         response.put("userId", userId);
+        response.put("type", type.name());
         response.put("dryRun", dryRun);
         response.put("activeTokens", tokens.size());
 
@@ -199,17 +208,12 @@ public class NotificationController {
             return ResponseEntity.ok(response);
         }
 
-        Map<String, Object> data = new HashMap<>();
-        data.put("kind", "test");
+        Map<String, Object> data = new HashMap<>(type.data);
         data.put("sentAt", Instant.now().toString());
 
         List<ExpoPushService.ExpoMessage> messages = new ArrayList<>();
         for (PushToken t : tokens) {
-            messages.add(new ExpoPushService.ExpoMessage(
-                    t.getToken(),
-                    "🚀 Notificação de teste",
-                    "Se você viu isso, a integração FCM está funcionando!",
-                    data));
+            messages.add(new ExpoPushService.ExpoMessage(t.getToken(), type.title, type.body, data));
         }
 
         // Caminho direto pelo provedor: expõe o resultado cru por token (ok + errorCode FCM).
