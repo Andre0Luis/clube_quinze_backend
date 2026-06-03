@@ -8,4 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface PushTokenRepository extends JpaRepository<PushToken, Long> {
     List<PushToken> findByUserIdAndInvalidatedAtIsNull(Long userId);
     Optional<PushToken> findByToken(String token);
+    /** Todos os tokens ativos (para broadcasts). */
+    List<PushToken> findByInvalidatedAtIsNull();
 }

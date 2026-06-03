@@ -1,6 +1,7 @@
 package br.com.clube_quinze.api.controller;
 
 import br.com.clube_quinze.api.dto.common.NotificationResponse;
+import br.com.clube_quinze.api.dto.notifications.BroadcastRequest;
 import br.com.clube_quinze.api.dto.notifications.PushTokenRequest;
 import br.com.clube_quinze.api.dto.notifications.TestNotificationType;
 import br.com.clube_quinze.api.exception.ResourceNotFoundException;
@@ -241,6 +242,53 @@ public class NotificationController {
         response.put("failed", results.size() - ok);
         response.put("status", ok > 0 ? "ok" : "all-failed");
         response.put("results", perToken);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Envia uma push notification livre para TODOS os membros com token ativo.
+     * Admin-only. Suporta emojis no título e no corpo (UTF-8 completo via FCM).
+     *
+     * Exemplo:
+     *   POST /api/v1/notifications/broadcast
+     *   { "title": "🎉 Novidade!", "body": "Aula especial nesta sexta às 19h. Não perca!" }
+     *   Authorization: Bearer &lt;admin-token&gt;
+     */
+    @PostMapping("/broadcast")
+    @PreAuthorize("hasRole('CLUB_ADMIN')")
+    public ResponseEntity<Map<String, Object>> broadcast(
+            @Valid @RequestBody BroadcastRequest request) {
+
+        List<PushToken> tokens = pushTokenRepository.findByInvalidatedAtIsNull();
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("title", request.title());
+        response.put("body", request.body());
+        response.put("activeTokens", tokens.size());
+
+        if (tokens.isEmpty()) {
+            response.put("status", "no-active-tokens");
+            response.put("sent", 0);
+            response.put("failed", 0);
+            return ResponseEntity.ok(response);
+        }
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("kind", "broadcast");
+        data.put("sentAt", Instant.now().toString());
+
+        List<ExpoPushService.ExpoMessage> messages = new ArrayList<>();
+        for (PushToken t : tokens) {
+            messages.add(new ExpoPushService.ExpoMessage(
+                    t.getToken(), request.title(), request.body(), data));
+        }
+
+        List<ExpoPushService.ExpoResult> results = expoPushService.sendBatch(messages);
+
+        int ok = (int) results.stream().filter(ExpoPushService.ExpoResult::ok).count();
+        response.put("sent", ok);
+        response.put("failed", results.size() - ok);
+        response.put("status", ok > 0 ? "ok" : "all-failed");
         return ResponseEntity.ok(response);
     }
 
