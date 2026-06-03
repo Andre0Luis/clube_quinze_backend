@@ -12,6 +12,8 @@ import br.com.clube_quinze.api.repository.PushTokenRepository;
 import br.com.clube_quinze.api.security.ClubeQuinzeUserDetails;
 import br.com.clube_quinze.api.service.notification.ExpoPushService;
 import br.com.clube_quinze.api.service.notification.PushNotificationService;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -191,6 +193,7 @@ public class NotificationController {
     @PreAuthorize("hasRole('CLUB_ADMIN')")
     public ResponseEntity<Map<String, Object>> sendTest(
             @PathVariable Long userId,
+            @Parameter(description = "Tipo de notificação a simular", schema = @Schema(implementation = TestNotificationType.class))
             @RequestParam(defaultValue = "TEST") TestNotificationType type,
             @RequestParam(defaultValue = "false") boolean dryRun) {
 
@@ -208,12 +211,13 @@ public class NotificationController {
             return ResponseEntity.ok(response);
         }
 
-        Map<String, Object> data = new HashMap<>(type.data);
+        Map<String, Object> data = type.buildData();
         data.put("sentAt", Instant.now().toString());
+        String body = type.buildBody();
 
         List<ExpoPushService.ExpoMessage> messages = new ArrayList<>();
         for (PushToken t : tokens) {
-            messages.add(new ExpoPushService.ExpoMessage(t.getToken(), type.title, type.body, data));
+            messages.add(new ExpoPushService.ExpoMessage(t.getToken(), type.title, body, data));
         }
 
         // Caminho direto pelo provedor: expõe o resultado cru por token (ok + errorCode FCM).

@@ -8,87 +8,74 @@ import java.util.Map;
 
 /**
  * Tipos de notificação disponíveis para o endpoint de teste.
- * Cada valor carrega o kind, título, corpo e data payload que espelha
+ * Cada valor carrega o kind, título e data payload que espelha
  * exatamente o que o sistema envia em produção.
+ *
+ * <p>O {@code body} é calculado no momento do envio (não na inicialização do enum)
+ * para garantir que o horário seja sempre atual e para evitar o problema de
+ * inicialização de campos estáticos em enums Java (os constants são inicializados
+ * antes dos campos static, o que causaria NPE se FMT fosse referenciado inline).
  */
 public enum TestNotificationType {
 
-    /** Verifica apenas que o FCM está funcionando e o token ativo. */
-    TEST(
-            "TEST",
-            "🚀 Notificação de teste",
-            "Se você viu isso, a integração FCM está funcionando!",
-            Map.of("kind", "test")
-    ),
-
-    /** Simula o lembrete de 24h antes do agendamento. */
-    REMINDER_24H(
-            "APPOINTMENT_REMINDER_PUSH",
-            "📅 Lembrete de agendamento",
-            "Você tem um agendamento amanhã — " + formattedNow(24 * 60),
-            Map.of("kind", "reminder", "appointmentId", "0", "offset", "-24h", "offsetLabel", "amanhã")
-    ),
-
-    /** Simula o lembrete de 3h antes do agendamento. */
-    REMINDER_3H(
-            "APPOINTMENT_REMINDER_PUSH",
-            "📅 Lembrete de agendamento",
-            "Você tem um agendamento em 3 horas — " + formattedNow(3 * 60),
-            Map.of("kind", "reminder", "appointmentId", "0", "offset", "-3h", "offsetLabel", "em 3 horas")
-    ),
-
-    /** Simula o lembrete de 1h antes do agendamento. */
-    REMINDER_1H(
-            "APPOINTMENT_REMINDER_PUSH",
-            "⏰ Agendamento em breve",
-            "Você tem um agendamento em 1 hora — " + formattedNow(60),
-            Map.of("kind", "reminder", "appointmentId", "0", "offset", "-1h", "offsetLabel", "em 1 hora")
-    ),
-
-    /** Simula o lembrete de 30min antes do agendamento. */
-    REMINDER_30MIN(
-            "APPOINTMENT_REMINDER_PUSH",
-            "⏰ Agendamento em breve",
-            "Você tem um agendamento em 30 minutos — " + formattedNow(30),
-            Map.of("kind", "reminder", "appointmentId", "0", "offset", "-30min", "offsetLabel", "em 30 minutos")
-    ),
-
-    /** Simula a notificação de reagendamento. */
-    RESCHEDULED(
-            "APPOINTMENT_RESCHEDULED",
-            "🔄 Agendamento reagendado",
-            "Seu agendamento foi remarcado para " + formattedNow(60 * 48),
-            Map.of("kind", "rescheduled", "appointmentId", "0")
-    ),
-
-    /** Simula a notificação de cancelamento pelo clube. */
-    CANCELLED(
-            "CANCELLED",
-            "❌ Agendamento cancelado",
-            "Seu agendamento foi cancelado pelo clube.",
-            Map.of("kind", "cancelled", "appointmentId", "0")
-    );
+    TEST       ("TEST",                   "🚀 Notificação de teste",     "em breve",        "test",       null,     null),
+    REMINDER_24H("APPOINTMENT_REMINDER_PUSH", "📅 Lembrete de agendamento", "amanhã",          "reminder",   "-24h",   24 * 60),
+    REMINDER_3H ("APPOINTMENT_REMINDER_PUSH", "📅 Lembrete de agendamento", "em 3 horas",      "reminder",   "-3h",    3 * 60),
+    REMINDER_1H ("APPOINTMENT_REMINDER_PUSH", "⏰ Agendamento em breve",    "em 1 hora",       "reminder",   "-1h",    60),
+    REMINDER_30MIN("APPOINTMENT_REMINDER_PUSH","⏰ Agendamento em breve",   "em 30 minutos",   "reminder",   "-30min", 30),
+    RESCHEDULED ("APPOINTMENT_RESCHEDULED",   "🔄 Agendamento reagendado", "em breve",        "rescheduled",null,     48 * 60),
+    CANCELLED   ("CANCELLED",                 "❌ Agendamento cancelado",  null,              "cancelled",  null,     null);
 
     // ── campos ────────────────────────────────────────────────────────────────
 
     public final String kind;
     public final String title;
-    public final String body;
-    public final Map<String, Object> data;
+    /** Rótulo do offset, ex: "amanhã", "em 1 hora". Null para tipos sem horário. */
+    private final String offsetLabel;
+    private final String dataKind;
+    private final String dataOffset;
+    /** Minutos a somar ao now() para compor o body. Null = sem horário no body. */
+    private final Integer offsetMinutes;
 
-    TestNotificationType(String kind, String title, String body, Map<String, Object> data) {
-        this.kind  = kind;
-        this.title = title;
-        this.body  = body;
-        this.data  = data;
+    TestNotificationType(String kind, String title, String offsetLabel,
+                         String dataKind, String dataOffset, Integer offsetMinutes) {
+        this.kind          = kind;
+        this.title         = title;
+        this.offsetLabel   = offsetLabel;
+        this.dataKind      = dataKind;
+        this.dataOffset    = dataOffset;
+        this.offsetMinutes = offsetMinutes;
     }
 
-    // ── helpers ───────────────────────────────────────────────────────────────
+    // ── body dinâmico (calculado no envio, não na inicialização) ─────────────
 
-    private static final DateTimeFormatter FMT =
-            DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm", new Locale("pt", "BR"));
+    public String buildBody() {
+        return switch (this) {
+            case TEST       -> "Se você viu isso, a integração FCM está funcionando!";
+            case CANCELLED  -> "Seu agendamento foi cancelado pelo clube.";
+            default         -> {
+                String date = offsetMinutes != null ? " — " + formattedNow(offsetMinutes) : "";
+                yield switch (this) {
+                    case RESCHEDULED -> "Seu agendamento foi remarcado para" + date;
+                    default          -> "Você tem um agendamento " + offsetLabel + date;
+                };
+            }
+        };
+    }
 
-    private static String formattedNow(int offsetMinutes) {
-        return LocalDateTime.now(ZoneOffset.UTC).plusMinutes(offsetMinutes).format(FMT);
+    public Map<String, Object> buildData() {
+        java.util.Map<String, Object> m = new java.util.HashMap<>();
+        m.put("kind", dataKind);
+        m.put("appointmentId", "0");
+        if (dataOffset    != null) m.put("offset",      dataOffset);
+        if (offsetLabel   != null) m.put("offsetLabel", offsetLabel);
+        return m;
+    }
+
+    // ── helper ────────────────────────────────────────────────────────────────
+
+    private static String formattedNow(int minutes) {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm", new Locale("pt", "BR"));
+        return LocalDateTime.now(ZoneOffset.UTC).plusMinutes(minutes).format(fmt);
     }
 }
