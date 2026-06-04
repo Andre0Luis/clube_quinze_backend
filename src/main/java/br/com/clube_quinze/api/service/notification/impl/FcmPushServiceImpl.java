@@ -3,6 +3,7 @@ package br.com.clube_quinze.api.service.notification.impl;
 import br.com.clube_quinze.api.repository.PushTokenRepository;
 import br.com.clube_quinze.api.service.notification.ExpoPushService;
 import com.google.firebase.messaging.AndroidConfig;
+import com.google.firebase.messaging.AndroidNotification;
 import com.google.firebase.messaging.BatchResponse;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
@@ -57,6 +58,9 @@ public class FcmPushServiceImpl implements ExpoPushService {
                     .putAllData(toStringMap(m.data()))
                     .setAndroidConfig(AndroidConfig.builder()
                             .setPriority(AndroidConfig.Priority.HIGH)
+                            .setNotification(AndroidNotification.builder()
+                                    .setChannelId("agendamentos")
+                                    .build())
                             .build())
                     .build());
         }
