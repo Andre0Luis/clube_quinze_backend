@@ -16,8 +16,8 @@ import java.time.LocalDateTime;
  */
 @Entity
 @Table(name = "lembrete_agendamento_log",
-        uniqueConstraints = @UniqueConstraint(name = "uq_lembrete_appt_offset",
-                columnNames = {"appointment_id", "offset_minutes"}))
+        uniqueConstraints = @UniqueConstraint(name = "uq_lembrete_appt_offset_recipient",
+                columnNames = {"appointment_id", "offset_minutes", "recipient_type"}))
 public class AppointmentReminderLog {
 
     @Id
@@ -30,6 +30,10 @@ public class AppointmentReminderLog {
     @Column(name = "offset_minutes", nullable = false)
     private int offsetMinutes;
 
+    /** "CLIENT" ou "ADMIN" — diferencia os dois fluxos de lembrete. */
+    @Column(name = "recipient_type", nullable = false, length = 20)
+    private String recipientType = "CLIENT";
+
     @Column(name = "sent_at", nullable = false)
     private LocalDateTime sentAt;
 
@@ -37,8 +41,21 @@ public class AppointmentReminderLog {
     }
 
     public AppointmentReminderLog(Long appointmentId, int offsetMinutes) {
+        this(appointmentId, offsetMinutes, "CLIENT");
+    }
+
+    public AppointmentReminderLog(Long appointmentId, int offsetMinutes, String recipientType) {
         this.appointmentId = appointmentId;
         this.offsetMinutes = offsetMinutes;
+        this.recipientType = recipientType;
+    }
+
+    public String getRecipientType() {
+        return recipientType;
+    }
+
+    public void setRecipientType(String recipientType) {
+        this.recipientType = recipientType;
     }
 
     @PrePersist

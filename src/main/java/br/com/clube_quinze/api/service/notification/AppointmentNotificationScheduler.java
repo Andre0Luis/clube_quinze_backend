@@ -4,10 +4,13 @@ import br.com.clube_quinze.api.config.RabbitMQConfig;
 import br.com.clube_quinze.api.dto.notification.NotificationMessageDTO;
 import br.com.clube_quinze.api.model.appointment.Appointment;
 import br.com.clube_quinze.api.model.enumeration.AppointmentStatus;
+import br.com.clube_quinze.api.model.enumeration.RoleType;
 import br.com.clube_quinze.api.model.user.User;
 import br.com.clube_quinze.api.model.notification.AppointmentReminderLog;
 import br.com.clube_quinze.api.repository.AppointmentReminderLogRepository;
 import br.com.clube_quinze.api.repository.AppointmentRepository;
+import br.com.clube_quinze.api.repository.UserRepository;
+import br.com.clube_quinze.api.service.settings.SettingsService;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -31,6 +34,8 @@ public class AppointmentNotificationScheduler {
     private final AppointmentRepository appointmentRepository;
     private final AppointmentReminderLogRepository reminderLogRepository;
     private final RabbitTemplate rabbitTemplate;
+    private final UserRepository userRepository;
+    private final SettingsService settingsService;
 
     // Reminder config: offset in minutes and user-friendly label
     private static final int[][] REMINDER_OFFSETS = {
@@ -50,10 +55,14 @@ public class AppointmentNotificationScheduler {
     public AppointmentNotificationScheduler(
             AppointmentRepository appointmentRepository,
             AppointmentReminderLogRepository reminderLogRepository,
-            RabbitTemplate rabbitTemplate) {
+            RabbitTemplate rabbitTemplate,
+            UserRepository userRepository,
+            SettingsService settingsService) {
         this.appointmentRepository = appointmentRepository;
         this.reminderLogRepository = reminderLogRepository;
         this.rabbitTemplate = rabbitTemplate;
+        this.userRepository = userRepository;
+        this.settingsService = settingsService;
     }
 
     // every 1 minute to guarantee 30min window is not missed
@@ -78,8 +87,9 @@ public class AppointmentNotificationScheduler {
 
             int enqueued = 0;
             for (Appointment a : appts) {
-                // Idempotência: pula se este (agendamento, offset) já foi enfileirado.
-                if (reminderLogRepository.existsByAppointmentIdAndOffsetMinutes(a.getId(), offsetMinutes)) {
+                // Idempotência: pula se este (agendamento, offset, CLIENT) já foi enfileirado.
+                if (reminderLogRepository.existsByAppointmentIdAndOffsetMinutesAndRecipientType(
+                        a.getId(), offsetMinutes, "CLIENT")) {
                     continue;
                 }
 
@@ -115,7 +125,7 @@ public class AppointmentNotificationScheduler {
 
                 // Marca como enviado (idempotência). Best-effort: se falhar, não relança.
                 try {
-                    reminderLogRepository.save(new AppointmentReminderLog(a.getId(), offsetMinutes));
+                    reminderLogRepository.save(new AppointmentReminderLog(a.getId(), offsetMinutes, "CLIENT"));
                 } catch (Exception ex) {
                     log.warn("Falha ao registrar log de lembrete (appt={}, offset={}): {}",
                             a.getId(), offsetMinutes, ex.getMessage());
@@ -126,5 +136,93 @@ public class AppointmentNotificationScheduler {
                 log.info("Enfileirados {} lembretes para offset {} min ({})", enqueued, offsetMinutes, offsetLabel);
             }
         }
+
+        // ── Lembretes para o ADMIN (configuráveis via painel) ────────────────────
+        scanAndSendAdminReminders(now);
+    }
+
+    /**
+     * Envia lembretes para todos os admins (CLUB_ADMIN) antes de cada atendimento,
+     * nos offsets configurados no painel (tabela app_settings). Mesma janela de
+     * catch-up e idempotência (recipient_type = ADMIN) do fluxo do cliente.
+     */
+    private void scanAndSendAdminReminders(LocalDateTime now) {
+        if (!settingsService.isAdminReminderEnabled()) {
+            return;
+        }
+        List<Integer> offsets = settingsService.getAdminReminderOffsets();
+        if (offsets.isEmpty()) {
+            return;
+        }
+
+        List<User> admins = userRepository.findByRole(RoleType.CLUB_ADMIN);
+        if (admins.isEmpty()) {
+            return;
+        }
+
+        for (int offsetMinutes : offsets) {
+            LocalDateTime apptStart = now.plusMinutes(offsetMinutes - GRACE_MINUTES);
+            LocalDateTime apptEnd = now.plusMinutes(offsetMinutes);
+
+            List<Appointment> appts = appointmentRepository.findByStatusAndBetween(
+                    AppointmentStatus.SCHEDULED, apptStart, apptEnd);
+            if (appts.isEmpty()) continue;
+
+            int enqueued = 0;
+            for (Appointment a : appts) {
+                if (reminderLogRepository.existsByAppointmentIdAndOffsetMinutesAndRecipientType(
+                        a.getId(), offsetMinutes, "ADMIN")) {
+                    continue;
+                }
+
+                User client = a.getClient();
+                String clientName = client != null ? client.getName() : "Cliente";
+                String formattedDate = a.getScheduledAt().format(PT_BR_FORMATTER);
+                String label = humanizeOffset(offsetMinutes);
+                String title = "Lembrete de atendimento";
+                String body = "Próximo atendimento " + label + ": " + clientName + " às " + formattedDate;
+
+                for (User admin : admins) {
+                    Map<String, Object> pushData = new HashMap<>();
+                    pushData.put("userId", admin.getId());
+                    pushData.put("type", "ADMIN_REMINDER");
+                    pushData.put("title", title);
+                    pushData.put("body", body);
+                    Map<String, Object> extra = new HashMap<>();
+                    extra.put("kind", "admin_reminder");
+                    extra.put("appointmentId", a.getId());
+                    pushData.put("data", extra);
+                    rabbitTemplate.convertAndSend(
+                            RabbitMQConfig.NOTIFICATION_EXCHANGE,
+                            RabbitMQConfig.NOTIFICATION_ROUTING_KEY,
+                            new NotificationMessageDTO("PUSH_MESSAGE", pushData)
+                    );
+                }
+
+                try {
+                    reminderLogRepository.save(new AppointmentReminderLog(a.getId(), offsetMinutes, "ADMIN"));
+                } catch (Exception ex) {
+                    log.warn("Falha ao registrar log de lembrete ADMIN (appt={}, offset={}): {}",
+                            a.getId(), offsetMinutes, ex.getMessage());
+                }
+                enqueued++;
+            }
+            if (enqueued > 0) {
+                log.info("Enfileirados lembretes ADMIN para {} atendimento(s), offset {} min",
+                        enqueued, offsetMinutes);
+            }
+        }
+    }
+
+    /** Converte minutos em rótulo amigável: 60→"em 1 hora", 90→"em 1h30", 30→"em 30 minutos". */
+    private String humanizeOffset(int minutes) {
+        if (minutes % 60 == 0) {
+            int h = minutes / 60;
+            return "em " + h + (h == 1 ? " hora" : " horas");
+        }
+        if (minutes > 60) {
+            return "em " + (minutes / 60) + "h" + String.format("%02d", minutes % 60);
+        }
+        return "em " + minutes + " minutos";
     }
 }

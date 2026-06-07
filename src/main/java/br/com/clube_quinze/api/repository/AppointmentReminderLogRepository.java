@@ -6,4 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface AppointmentReminderLogRepository extends JpaRepository<AppointmentReminderLog, Long> {
 
     boolean existsByAppointmentIdAndOffsetMinutes(Long appointmentId, int offsetMinutes);
+
+    boolean existsByAppointmentIdAndOffsetMinutesAndRecipientType(
+            Long appointmentId, int offsetMinutes, String recipientType);
 }
