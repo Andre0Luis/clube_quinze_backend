@@ -13,6 +13,7 @@ import br.com.clube_quinze.api.model.appointment.Appointment;
 import br.com.clube_quinze.api.model.enumeration.AppointmentStatus;
 import br.com.clube_quinze.api.model.enumeration.MembershipTier;
 import br.com.clube_quinze.api.model.user.User;
+import br.com.clube_quinze.api.model.enumeration.RoleType;
 import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.service.appointment.AppointmentScheduleSettings;
@@ -196,18 +197,33 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     private void sendSchedulePush(Appointment saved) {
         try {
+            String when = saved.getScheduledAt().format(PT_BR_FORMATTER);
             var data = new java.util.HashMap<String, Object>();
             data.put("appointmentId", saved.getId());
             data.put("scheduledAt", saved.getScheduledAt().toString());
-            
-            var pushMap = new java.util.HashMap<String, Object>();
-            pushMap.put("userId", saved.getClient().getId());
-            pushMap.put("type", "SCHEDULED");
-            pushMap.put("title", "Agendamento confirmado");
-            pushMap.put("body", "Seu agendamento foi criado para " + saved.getScheduledAt().toString());
-            pushMap.put("data", data);
-            
-            rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("PUSH_MESSAGE", pushMap));
+
+            // Cliente: confirmação do próprio agendamento
+            var clientPush = new java.util.HashMap<String, Object>();
+            clientPush.put("userId", saved.getClient().getId());
+            clientPush.put("type", "SCHEDULED");
+            clientPush.put("title", "Agendamento confirmado");
+            clientPush.put("body", "Seu agendamento foi criado para " + when);
+            clientPush.put("data", data);
+            rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("PUSH_MESSAGE", clientPush));
+
+            // Admins: aviso de novo agendamento COM o nome do cliente que será atendido
+            String clientName = saved.getClient() != null && saved.getClient().getName() != null
+                    ? saved.getClient().getName()
+                    : "Cliente";
+            for (User admin : userRepository.findByRole(RoleType.CLUB_ADMIN)) {
+                var adminPush = new java.util.HashMap<String, Object>();
+                adminPush.put("userId", admin.getId());
+                adminPush.put("type", "ADMIN_NEW_APPOINTMENT");
+                adminPush.put("title", "Novo agendamento");
+                adminPush.put("body", clientName + " agendou para " + when);
+                adminPush.put("data", data);
+                rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("PUSH_MESSAGE", adminPush));
+            }
         } catch (Exception ignored) {
         }
     }
