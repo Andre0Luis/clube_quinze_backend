@@ -54,6 +54,12 @@ public class PushNotificationServiceImpl implements PushNotificationService {
         List<PushToken> tokens = pushTokenRepository.findByUserIdAndInvalidatedAtIsNull(userId);
         if (tokens.isEmpty()) return;
 
+        // Dedup defensivo: um mesmo aparelho acumula vários tokens FCM ao longo do tempo
+        // (token refresh, reinstalação, restauração) e os antigos podem continuar entregáveis,
+        // gerando notificações DUPLICADAS (usuário recebia "6 seguidas"). Mantemos apenas o token
+        // mais recente por plataforma — preservando iOS + Android simultâneos do mesmo usuário.
+        tokens = latestTokenPerPlatform(tokens);
+
         List<ExpoPushService.ExpoMessage> messages = new ArrayList<>();
         for (PushToken t : tokens) {
             messages.add(new ExpoPushService.ExpoMessage(t.getToken(), title, body, data));
@@ -88,6 +94,28 @@ public class PushNotificationServiceImpl implements PushNotificationService {
             pushDeliveryRepository.save(d);
             pushTokenRepository.save(token);
         }
+    }
+
+    /**
+     * Reduz a lista a um único token por plataforma — o mais recente (maior updatedAt, com
+     * fallback em createdAt). Evita enviar a mesma push para tokens antigos do mesmo aparelho.
+     */
+    private List<PushToken> latestTokenPerPlatform(List<PushToken> tokens) {
+        Map<String, PushToken> latest = new HashMap<>();
+        for (PushToken t : tokens) {
+            String key = t.getPlatform() != null ? t.getPlatform().toLowerCase() : "unknown";
+            PushToken current = latest.get(key);
+            if (current == null || recencyOf(t).isAfter(recencyOf(current))) {
+                latest.put(key, t);
+            }
+        }
+        return new ArrayList<>(latest.values());
+    }
+
+    private Instant recencyOf(PushToken t) {
+        if (t.getUpdatedAt() != null) return t.getUpdatedAt();
+        if (t.getCreatedAt() != null) return t.getCreatedAt();
+        return Instant.EPOCH;
     }
 
     private void persistInAppNotification(Long userId, String kind, String title, String body) {

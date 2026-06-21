@@ -139,7 +139,7 @@ public class NotificationController {
             }
         });
 
-        pushTokenRepository.findByToken(request.token())
+        PushToken active = pushTokenRepository.findByToken(request.token())
                 .map(existing -> {
                     existing.setInvalidatedAt(null);
                     existing.setPlatform(request.platform());
@@ -153,6 +153,18 @@ public class NotificationController {
                     t.setPlatform(request.platform());
                     return pushTokenRepository.save(t);
                 });
+
+        // Invalida tokens antigos do MESMO usuário e plataforma. Tokens FCM mudam (refresh/
+        // reinstalação) e os antigos ficavam ativos para sempre, fazendo o aparelho receber
+        // notificações duplicadas. Mantém apenas o token recém-registrado por plataforma.
+        pushTokenRepository.findByUserIdAndInvalidatedAtIsNull(userId).forEach(t -> {
+            boolean samePlatform = t.getPlatform() != null
+                    && t.getPlatform().equalsIgnoreCase(request.platform());
+            if (samePlatform && !t.getId().equals(active.getId())) {
+                t.setInvalidatedAt(Instant.now());
+                pushTokenRepository.save(t);
+            }
+        });
 
         return ResponseEntity.ok().build();
     }
