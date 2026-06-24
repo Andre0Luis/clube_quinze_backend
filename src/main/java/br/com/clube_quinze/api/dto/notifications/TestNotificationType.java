@@ -1,7 +1,7 @@
 package br.com.clube_quinze.api.dto.notifications;
 
+import br.com.clube_quinze.api.config.AppConfig;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Map;
@@ -76,6 +76,6 @@ public enum TestNotificationType {
 
     private static String formattedNow(int minutes) {
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm", new Locale("pt", "BR"));
-        return LocalDateTime.now(ZoneOffset.UTC).plusMinutes(minutes).format(fmt);
+        return LocalDateTime.now(AppConfig.APP_ZONE).plusMinutes(minutes).format(fmt);
     }
 }

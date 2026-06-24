@@ -10,9 +10,9 @@ import br.com.clube_quinze.api.model.notification.AppointmentReminderLog;
 import br.com.clube_quinze.api.repository.AppointmentReminderLogRepository;
 import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
+import br.com.clube_quinze.api.config.AppConfig;
 import br.com.clube_quinze.api.service.settings.SettingsService;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
@@ -68,7 +68,8 @@ public class AppointmentNotificationScheduler {
     // every 1 minute to guarantee 30min window is not missed
     @Scheduled(cron = "0 */1 * * * *")
     public void scanAndSendReminders() {
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        // "Agora" no fuso de Brasília, para casar com o scheduledAt (wall-clock de Brasília).
+        LocalDateTime now = LocalDateTime.now(AppConfig.APP_ZONE);
 
         for (int i = 0; i < REMINDER_OFFSETS.length; i++) {
             int offsetMinutes = REMINDER_OFFSETS[i][0];
