@@ -24,7 +24,10 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import org.springframework.transaction.annotation.Transactional;
+
 @Component
+@Transactional
 public class AppointmentNotificationScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(AppointmentNotificationScheduler.class);
