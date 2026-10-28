@@ -47,6 +47,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     private static final LocalTime OPENING_TIME = AppointmentScheduleSettings.OPENING_TIME;
     private static final LocalTime CLOSING_TIME = AppointmentScheduleSettings.CLOSING_TIME;
     private static final Duration SLOT_DURATION = AppointmentScheduleSettings.SLOT_DURATION;
+    private static final int GRID_MINUTES = AppointmentScheduleSettings.GRID_MINUTES;
     private static final DateTimeFormatter PT_BR_FORMATTER =
             DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm", new Locale("pt", "BR"));
 
@@ -65,8 +66,11 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     @Override
     @Transactional(readOnly = true)
-    public AvailableSlotResponse getAvailableSlots(LocalDate date, MembershipTier tier) {
+    public AvailableSlotResponse getAvailableSlots(LocalDate date, MembershipTier tier, Integer durationMinutes) {
         MembershipTier effectiveTier = tier == null ? MembershipTier.QUINZE_STANDARD : tier;
+        if (durationMinutes != null) {
+            validateDuration(durationMinutes);
+        }
         LocalDate today = LocalDate.now(clock);
         if (date.isBefore(today)) {
             return new AvailableSlotResponse(date, effectiveTier, List.of());
@@ -83,13 +87,19 @@ public class AppointmentServiceImpl implements AppointmentService {
                 LocalDateTime end = curr.plusMinutes(appointment.getDurationMinutes());
                 while (curr.isBefore(end)) {
                     occupiedSlots.add(curr);
-                    curr = curr.plusMinutes(SLOT_DURATION.toMinutes());
+                    curr = curr.plusMinutes(GRID_MINUTES);
                 }
             }
         }
 
-        Duration durationNeeded = effectiveTier == MembershipTier.QUINZE_SELECT ? Duration.ofMinutes(120) : SLOT_DURATION;
-        Duration step = effectiveTier == MembershipTier.QUINZE_SELECT ? Duration.ofMinutes(120) : SLOT_DURATION;
+        // Com duração customizada (admin) os inícios seguem a grade de 15 min; sem ela, mantém a grade
+        // do plano (Select: blocos de 2h; demais: 30 min) para não mudar a experiência dos clientes.
+        Duration durationNeeded = durationMinutes != null
+                ? Duration.ofMinutes(durationMinutes)
+                : defaultDurationFor(effectiveTier);
+        Duration step = durationMinutes != null
+                ? Duration.ofMinutes(GRID_MINUTES)
+                : defaultStepFor(effectiveTier);
 
         List<LocalDateTime> available = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now(clock);
@@ -113,7 +123,7 @@ public class AppointmentServiceImpl implements AppointmentService {
             if (occupied.contains(curr)) {
                 return false;
             }
-            curr = curr.plus(SLOT_DURATION);
+            curr = curr.plusMinutes(GRID_MINUTES);
         }
         return true;
     }
@@ -126,9 +136,9 @@ public class AppointmentServiceImpl implements AppointmentService {
         User client = findUser(request.clientId());
         validateClientForTier(client, request.appointmentTier());
         validateAppointmentDate(request.scheduledAt());
-        validateBusinessHours(request.scheduledAt());
-        
-        int duration = resolveDuration(request);
+
+        int duration = resolveDuration(request, privileged);
+        validateBusinessHours(request.scheduledAt(), duration);
         ensureSlotAvailable(request.scheduledAt(), duration, null);
 
         if (Boolean.TRUE.equals(request.recurring()) && request.recurrencePeriod() != null && request.recurrenceMonths() != null) {
@@ -242,12 +252,16 @@ public class AppointmentServiceImpl implements AppointmentService {
         LocalDateTime oldScheduledAt = appointment.getScheduledAt();
 
         validateAppointmentDate(request.newDate());
-        validateBusinessHours(request.newDate());
-        
-        int duration = appointment.getDurationMinutes();
+
+        // Só admin/funcionário pode alterar a duração; cliente mantém a do agendamento.
+        int duration = privileged && request.durationMinutes() != null
+                ? validateDuration(request.durationMinutes())
+                : appointment.getDurationMinutes();
+        validateBusinessHours(request.newDate(), duration);
         ensureSlotAvailable(request.newDate(), duration, appointment.getId());
 
         appointment.setScheduledAt(request.newDate());
+        appointment.setDurationMinutes(duration);
         if (request.notes() != null && !request.notes().isBlank()) {
             appointment.setNotes(request.notes());
         }
@@ -445,10 +459,13 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
     }
 
-    private void validateBusinessHours(LocalDateTime scheduledAt) {
+    private void validateBusinessHours(LocalDateTime scheduledAt, int durationMinutes) {
         LocalTime time = scheduledAt.toLocalTime();
-        LocalTime lastSlotStart = CLOSING_TIME.minusMinutes(SLOT_DURATION.toMinutes());
-        if (time.isBefore(OPENING_TIME) || time.isAfter(lastSlotStart)) {
+        if (time.getMinute() % GRID_MINUTES != 0 || time.getSecond() != 0) {
+            throw new BusinessException("O horário deve começar em múltiplos de 15 minutos");
+        }
+        LocalTime lastStart = CLOSING_TIME.minusMinutes(durationMinutes);
+        if (time.isBefore(OPENING_TIME) || time.isAfter(lastStart)) {
             throw new BusinessException("Horário fora do expediente do clube");
         }
     }
@@ -501,8 +518,42 @@ public class AppointmentServiceImpl implements AppointmentService {
                 appointment.getRecurrencePeriod());
     }
 
-    private int resolveDuration(AppointmentRequest request) {
+    /**
+     * Admin/funcionário define a duração (padrão 30 min). Cliente agenda sempre com a duração padrão do
+     * plano (Select 2h, demais 30 min); o admin ajusta depois, ao aprovar/editar.
+     */
+    private int resolveDuration(AppointmentRequest request, boolean privileged) {
+        if (!privileged) {
+            return (int) defaultDurationFor(request.appointmentTier()).toMinutes();
+        }
         Integer candidate = request.durationMinutes();
-        return candidate == null ? 60 : candidate;
+        return candidate == null
+                ? AppointmentScheduleSettings.DEFAULT_DURATION_MINUTES
+                : validateDuration(candidate);
+    }
+
+    private int validateDuration(int minutes) {
+        if (minutes < AppointmentScheduleSettings.MIN_DURATION_MINUTES
+                || minutes > AppointmentScheduleSettings.MAX_DURATION_MINUTES) {
+            throw new BusinessException("A duração deve estar entre "
+                    + AppointmentScheduleSettings.MIN_DURATION_MINUTES + " e "
+                    + AppointmentScheduleSettings.MAX_DURATION_MINUTES + " minutos");
+        }
+        if (minutes % GRID_MINUTES != 0) {
+            throw new BusinessException("A duração deve ser múltipla de 15 minutos");
+        }
+        return minutes;
+    }
+
+    private Duration defaultDurationFor(MembershipTier tier) {
+        return tier == MembershipTier.QUINZE_SELECT
+                ? Duration.ofMinutes(AppointmentScheduleSettings.SELECT_DURATION_MINUTES)
+                : Duration.ofMinutes(AppointmentScheduleSettings.DEFAULT_DURATION_MINUTES);
+    }
+
+    private Duration defaultStepFor(MembershipTier tier) {
+        return tier == MembershipTier.QUINZE_SELECT
+                ? Duration.ofMinutes(AppointmentScheduleSettings.SELECT_DURATION_MINUTES)
+                : SLOT_DURATION;
     }
 }

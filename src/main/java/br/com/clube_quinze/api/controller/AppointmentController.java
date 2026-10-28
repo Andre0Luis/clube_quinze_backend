@@ -45,8 +45,12 @@ public class AppointmentController {
     @GetMapping("/availability")
     public ResponseEntity<AvailableSlotResponse> listAvailableSlots(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-            @RequestParam(name = "tier", required = false) MembershipTier tier) {
-        return ResponseEntity.ok(appointmentService.getAvailableSlots(date, tier));
+            @RequestParam(name = "tier", required = false) MembershipTier tier,
+            @RequestParam(name = "durationMinutes", required = false) Integer durationMinutes,
+            @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser) {
+        // Duração customizada é recurso do admin/funcionário; para clientes é ignorada.
+        Integer effectiveDuration = currentUser != null && isPrivileged(currentUser) ? durationMinutes : null;
+        return ResponseEntity.ok(appointmentService.getAvailableSlots(date, tier, effectiveDuration));
     }
 
     @PostMapping

@@ -215,4 +215,136 @@ class AppointmentIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
     }
+
+    // ── Duração flexível (admin) ──────────────────────────────────────────────
+
+    private static final AtomicInteger DURATION_DAY_COUNTER = new AtomicInteger(0);
+
+    /** Dia exclusivo por teste, fora da faixa (14–73 dias) que os testes de feedback sorteiam. */
+    private LocalDate freshDay() {
+        return LocalDate.now().plusDays(120L + DURATION_DAY_COUNTER.getAndIncrement());
+    }
+
+    private Map<String, Object> adminAppointment(LocalDateTime at, Integer duration) {
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("clientId", memberId);
+        body.put("scheduledAt", at.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        body.put("appointmentTier", "QUINZE_STANDARD");
+        body.put("serviceType", "Corte duração flexível");
+        if (duration != null) {
+            body.put("durationMinutes", duration);
+        }
+        return body;
+    }
+
+    @Test
+    @Order(10)
+    @DisplayName("POST /appointments → admin define duração de 45 min e horários colados são aceitos")
+    void adminDeveDefinirDuracaoPersonalizada() {
+        LocalDate day = freshDay();
+
+        ResponseEntity<Map> first = post(BASE, adminAppointment(day.atTime(14, 15), 45), adminToken, Map.class);
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(((Number) first.getBody().get("durationMinutes")).intValue()).isEqualTo(45);
+
+        // 14:15 + 45 min termina 15:00 → um atendimento às 15:00 não conflita
+        ResponseEntity<Map> backToBack = post(BASE, adminAppointment(day.atTime(15, 0), 30), adminToken, Map.class);
+        assertThat(backToBack.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    }
+
+    @Test
+    @Order(11)
+    @DisplayName("POST /appointments → 422 quando a duração personalizada sobrepõe outro atendimento")
+    void deveRecusarSobreposicaoComDuracaoPersonalizada() {
+        LocalDate day = freshDay();
+        assertThat(post(BASE, adminAppointment(day.atTime(14, 15), 45), adminToken, Map.class).getStatusCode())
+                .isEqualTo(HttpStatus.CREATED);
+
+        ResponseEntity<Map> overlap = post(BASE, adminAppointment(day.atTime(14, 45), 30), adminToken, Map.class);
+
+        assertThat(overlap.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    @Test
+    @Order(12)
+    @DisplayName("POST /appointments → duração inválida (não múltipla de 15 / fora do limite) é recusada")
+    void deveValidarDuracao() {
+        LocalDate day = freshDay();
+
+        ResponseEntity<Map> notMultiple = post(BASE, adminAppointment(day.atTime(10, 0), 20), adminToken, Map.class);
+        assertThat(notMultiple.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        ResponseEntity<Map> tooShort = post(BASE, adminAppointment(day.atTime(10, 0), 10), adminToken, Map.class);
+        assertThat(tooShort.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        ResponseEntity<Map> tooLong = post(BASE, adminAppointment(day.atTime(10, 0), 600), adminToken, Map.class);
+        assertThat(tooLong.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        ResponseEntity<Map> offGrid = post(BASE, adminAppointment(day.atTime(10, 10), 30), adminToken, Map.class);
+        assertThat(offGrid.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    @Test
+    @Order(13)
+    @DisplayName("POST /appointments → 422 quando o atendimento terminaria depois do fechamento")
+    void deveRecusarAtendimentoQueUltrapassaFechamento() {
+        LocalDate day = freshDay();
+
+        // Fecha às 21:00: 20:30 + 60 min estoura o expediente; 20:00 + 60 min cabe.
+        ResponseEntity<Map> late = post(BASE, adminAppointment(day.atTime(20, 30), 60), adminToken, Map.class);
+        assertThat(late.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        ResponseEntity<Map> fits = post(BASE, adminAppointment(day.atTime(20, 0), 60), adminToken, Map.class);
+        assertThat(fits.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    }
+
+    @Test
+    @Order(14)
+    @DisplayName("POST /appointments → cliente não escolhe duração: vale a padrão do plano")
+    void clienteNaoControlaDuracao() {
+        LocalDate day = freshDay();
+
+        ResponseEntity<Map> response = post(BASE, adminAppointment(day.atTime(11, 0), 240), memberToken, Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(((Number) response.getBody().get("durationMinutes")).intValue()).isEqualTo(30);
+    }
+
+    @Test
+    @Order(15)
+    @DisplayName("PUT /appointments/{id}/reschedule → admin altera a duração; cliente não")
+    void soAdminAlteraDuracaoNoReagendamento() {
+        LocalDate day = freshDay();
+        ResponseEntity<Map> created = post(BASE, adminAppointment(day.atTime(10, 0), 30), adminToken, Map.class);
+        Long id = ((Number) created.getBody().get("id")).longValue();
+        String newDate = day.atTime(16, 0).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+
+        ResponseEntity<Map> byMember = put(BASE + "/" + id + "/reschedule",
+                Map.of("newDate", newDate, "durationMinutes", 240), memberToken, Map.class);
+        assertThat(byMember.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(((Number) byMember.getBody().get("durationMinutes")).intValue()).isEqualTo(30);
+
+        ResponseEntity<Map> byAdmin = put(BASE + "/" + id + "/reschedule",
+                Map.of("newDate", newDate, "durationMinutes", 90), adminToken, Map.class);
+        assertThat(byAdmin.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(((Number) byAdmin.getBody().get("durationMinutes")).intValue()).isEqualTo(90);
+    }
+
+    @Test
+    @Order(16)
+    @DisplayName("GET /appointments/availability → admin com duração vê grade de 15 min; cliente ignora o parâmetro")
+    void disponibilidadeComDuracaoUsaGradeDe15Minutos() {
+        String date = freshDay().format(DateTimeFormatter.ISO_DATE);
+
+        ResponseEntity<Map> admin = get(BASE + "/availability?date=" + date + "&durationMinutes=45", adminToken, Map.class);
+        ResponseEntity<Map> member = get(BASE + "/availability?date=" + date + "&durationMinutes=45", memberToken, Map.class);
+
+        java.util.List<String> adminSlots = (java.util.List<String>) admin.getBody().get("availableSlots");
+        java.util.List<String> memberSlots = (java.util.List<String>) member.getBody().get("availableSlots");
+        assertThat(adminSlots).anyMatch(slot -> slot.contains("T09:15"));
+        // 45 min a partir de 20:15 termina 21:00 (cabe); 20:30 + 45 não cabe.
+        assertThat(adminSlots).anyMatch(slot -> slot.contains("T20:15"));
+        assertThat(adminSlots).noneMatch(slot -> slot.contains("T20:30"));
+        assertThat(memberSlots).noneMatch(slot -> slot.contains("T09:15"));
+    }
 }

@@ -12,7 +12,11 @@ import java.time.LocalDate;
 
 public interface AppointmentService {
 
-    AvailableSlotResponse getAvailableSlots(LocalDate date, MembershipTier tier);
+    /**
+     * @param durationMinutes se informado (uso do admin), lista inícios em grade de 15 min onde cabe essa
+     *                        duração; se nulo, mantém a grade padrão do plano (Select 2h / demais 30 min).
+     */
+    AvailableSlotResponse getAvailableSlots(LocalDate date, MembershipTier tier, Integer durationMinutes);
 
     AppointmentResponse schedule(Long actorId, boolean privileged, AppointmentRequest request);
 
