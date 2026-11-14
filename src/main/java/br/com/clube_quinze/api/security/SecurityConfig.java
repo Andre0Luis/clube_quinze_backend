@@ -60,6 +60,7 @@ public class SecurityConfig {
                         // Botões do e-mail de confirmação: protegidos por token assinado, não por JWT.
                         .requestMatchers(HttpMethod.GET, "/appointment-action").permitAll()
                         .requestMatchers(HttpMethod.POST, "/appointment-action").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/appointment-calendar").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/public/policies/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/plans", "/api/v1/plans/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/community/**").permitAll()

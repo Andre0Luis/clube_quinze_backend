@@ -37,7 +37,7 @@ public class StagingAccessFilter extends OncePerRequestFilter {
     private final List<String> publicPaths;
 
     public StagingAccessFilter(@Value("${app.staging.access-key}") String accessKey,
-                               @Value("${app.staging.public-paths:/appointment-action}") List<String> publicPaths) {
+                               @Value("${app.staging.public-paths:/appointment-action,/appointment-calendar}") List<String> publicPaths) {
         this.expected = accessKey.getBytes(StandardCharsets.UTF_8);
         this.publicPaths = publicPaths.stream().map(String::trim).filter(p -> !p.isEmpty()).toList();
     }

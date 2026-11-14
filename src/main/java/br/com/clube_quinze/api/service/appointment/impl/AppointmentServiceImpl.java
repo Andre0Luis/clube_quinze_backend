@@ -17,6 +17,7 @@ import br.com.clube_quinze.api.model.user.User;
 import br.com.clube_quinze.api.model.enumeration.RoleType;
 import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
+import br.com.clube_quinze.api.service.appointment.AppointmentCalendarService;
 import br.com.clube_quinze.api.service.appointment.AppointmentScheduleSettings;
 import br.com.clube_quinze.api.service.appointment.AppointmentService;
 import br.com.clube_quinze.api.config.RabbitMQConfig;
@@ -59,13 +60,15 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final UserRepository userRepository;
     private final RabbitTemplate rabbitTemplate;
     private final Clock clock;
+    private final AppointmentCalendarService calendarService;
 
     public AppointmentServiceImpl(AppointmentRepository appointmentRepository, UserRepository userRepository, Clock clock,
-            RabbitTemplate rabbitTemplate) {
+            RabbitTemplate rabbitTemplate, AppointmentCalendarService calendarService) {
         this.appointmentRepository = appointmentRepository;
         this.userRepository = userRepository;
         this.clock = clock;
         this.rabbitTemplate = rabbitTemplate;
+        this.calendarService = calendarService;
     }
 
     @Override
@@ -309,6 +312,8 @@ public class AppointmentServiceImpl implements AppointmentService {
             emailMap.put("oldScheduledAt", oldFormatted);
             emailMap.put("newScheduledAt", newFormatted);
             emailMap.put("description", description);
+            emailMap.put("googleCalendarUrl", calendarService.googleCalendarUrl(updated));
+            emailMap.put("icsUrl", calendarService.icsUrl(updated));
             
             rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("APPOINTMENT_RESCHEDULED_EMAIL", emailMap));
         } catch (Exception ignored) {
@@ -564,6 +569,8 @@ public class AppointmentServiceImpl implements AppointmentService {
             emailMap.put("oldScheduledAt", oldAt.format(PT_BR_FORMATTER));
             emailMap.put("newScheduledAt", updated.getScheduledAt().format(PT_BR_FORMATTER));
             emailMap.put("description", updated.getNotes() != null ? updated.getNotes() : "");
+            emailMap.put("googleCalendarUrl", calendarService.googleCalendarUrl(updated));
+            emailMap.put("icsUrl", calendarService.icsUrl(updated));
             rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY,
                     new NotificationMessageDTO("APPOINTMENT_RESCHEDULED_EMAIL", emailMap));
         } catch (Exception ignored) {

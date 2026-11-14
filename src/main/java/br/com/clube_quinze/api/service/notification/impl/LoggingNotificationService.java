@@ -34,20 +34,23 @@ public class LoggingNotificationService implements NotificationService {
 
     @Override
     @Async("asyncExecutor")
-    public void notifyAppointmentReminder(String email, String name, String scheduledAt, String description, String offsetLabel) {
+    public void notifyAppointmentReminder(String email, String name, String scheduledAt, String description, String offsetLabel,
+                                          String googleCalendarUrl, String icsUrl) {
         log.info("[async] Lembrete de agendamento para email={} name={} em={} offset={}", email, name, scheduledAt, offsetLabel);
     }
 
     @Override
     @Async("asyncExecutor")
-    public void notifyAppointmentRescheduled(String email, String name, String oldScheduledAt, String newScheduledAt, String description) {
+    public void notifyAppointmentRescheduled(String email, String name, String oldScheduledAt, String newScheduledAt, String description,
+                                             String googleCalendarUrl, String icsUrl) {
         log.info("[async] Agendamento remarcado para email={} name={} de={} para={}", email, name, oldScheduledAt, newScheduledAt);
     }
 
     @Override
     @Async("asyncExecutor")
     public void notifyAppointmentConfirmationRequest(String email, String name, String scheduledAt, String description,
-                                                     String confirmUrl, String cancelUrl, String rescheduleUrl) {
+                                                     String confirmUrl, String cancelUrl, String rescheduleUrl,
+                                                     String googleCalendarUrl, String icsUrl) {
         log.info("[async] Pedido de confirmação para email={} name={} em={} (links não logados)", email, name, scheduledAt);
     }
 }

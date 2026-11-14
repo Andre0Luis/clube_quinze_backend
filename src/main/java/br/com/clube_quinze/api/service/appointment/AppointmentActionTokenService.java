@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class AppointmentActionTokenService {
 
-    public enum Action { CONFIRM, CANCEL, RESCHEDULE }
+    public enum Action { CONFIRM, CANCEL, RESCHEDULE, CALENDAR }
 
     public record ParsedToken(Long appointmentId, Action action) {}
 

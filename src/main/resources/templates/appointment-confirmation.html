@@ -39,6 +39,11 @@
     <a class="btn btn-confirm" th:href="${confirmUrl}">Confirmar presença</a>
     <a class="btn btn-secondary" th:href="${rescheduleUrl}">Remarcar</a>
     <a class="btn btn-cancel" th:href="${cancelUrl}">Cancelar agendamento</a>
+    <div th:if="${googleCalendarUrl != null and !googleCalendarUrl.isEmpty()}" style="margin:18px 0;">
+      <p style="margin:0 0 8px;font-size:14px;color:#344054;">Salve na sua agenda:</p>
+      <a th:href="${googleCalendarUrl}" style="display:inline-block;background:#00053d;color:#ffffff;text-decoration:none;border-radius:8px;padding:10px 14px;font-size:14px;font-weight:600;margin:0 6px 6px 0;">Google Agenda</a>
+      <a th:href="${icsUrl}" style="display:inline-block;background:#eef4ff;color:#00053d;text-decoration:none;border-radius:8px;padding:10px 14px;font-size:14px;font-weight:600;margin:0 6px 6px 0;">Apple / Outlook (.ics)</a>
+    </div>
     <p style="font-size:13px;color:#667085;">Remarcações precisam da aprovação do clube. Se não for possível, mantemos o horário original.</p>
   </div>
   <div class="footer">Clube Quinze &mdash; Este é um e-mail automático.</div>

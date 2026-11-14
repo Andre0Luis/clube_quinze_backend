@@ -88,7 +88,9 @@ public class NotificationConsumer {
                 getString(data, "name"),
                 getString(data, "scheduledAt"),
                 getString(data, "description"),
-                getString(data, "offsetLabel")
+                getString(data, "offsetLabel"),
+                getString(data, "googleCalendarUrl"),
+                getString(data, "icsUrl")
         );
     }
 
@@ -100,7 +102,9 @@ public class NotificationConsumer {
                 getString(data, "description"),
                 getString(data, "confirmUrl"),
                 getString(data, "cancelUrl"),
-                getString(data, "rescheduleUrl")
+                getString(data, "rescheduleUrl"),
+                getString(data, "googleCalendarUrl"),
+                getString(data, "icsUrl")
         );
     }
 
@@ -110,7 +114,9 @@ public class NotificationConsumer {
                 getString(data, "name"),
                 getString(data, "oldScheduledAt"),
                 getString(data, "newScheduledAt"),
-                getString(data, "description")
+                getString(data, "description"),
+                getString(data, "googleCalendarUrl"),
+                getString(data, "icsUrl")
         );
     }
 
