@@ -109,6 +109,27 @@ public class EmailNotificationService implements NotificationService {
         }
     }
 
+    @Override
+    @Async("asyncExecutor")
+    public void notifyAppointmentConfirmationRequest(String email, String name, String scheduledAt, String description,
+                                                     String confirmUrl, String cancelUrl, String rescheduleUrl) {
+        Context context = new Context();
+        context.setVariable("name", name);
+        context.setVariable("scheduledAt", scheduledAt);
+        context.setVariable("description", description);
+        context.setVariable("confirmUrl", confirmUrl);
+        context.setVariable("cancelUrl", cancelUrl);
+        context.setVariable("rescheduleUrl", rescheduleUrl);
+        String html = templateEngine.process("appointment-confirmation", context);
+        String subject = "Confirme seu agendamento de " + scheduledAt;
+        try {
+            sendHtml(email, subject, html);
+            log.info("[async-email] Pedido de confirmação enviado para {}", email);
+        } catch (MailException ex) {
+            log.error("Falha ao enviar pedido de confirmação para {}: {}", email, ex.getMessage());
+        }
+    }
+
     private void sendHtml(String to, String subject, String html) {
         MimeMessage message = mailSender.createMimeMessage();
         try {

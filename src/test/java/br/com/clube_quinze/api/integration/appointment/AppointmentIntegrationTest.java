@@ -175,7 +175,7 @@ class AppointmentIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     @Order(8)
-    @DisplayName("PUT /appointments/{id}/reschedule → 200 membro reagenda")
+    @DisplayName("PUT /appointments/{id}/reschedule → 200 membro propõe remarcação (fica pendente de aprovação)")
     void deveMembrosReagendarHorario() {
         if (createdAppointmentId == null) deveMembrosAgendarHorario();
 
@@ -190,6 +190,9 @@ class AppointmentIntegrationTest extends AbstractIntegrationTest {
                 rescheduleReq, memberToken, Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        // Cliente nunca remarca direto: vira proposta e o horário original segue valendo.
+        assertThat(response.getBody().get("status")).isEqualTo("RESCHEDULE_REQUESTED");
+        assertThat(response.getBody().get("proposedAt")).isNotNull();
     }
 
     @Test
@@ -323,6 +326,7 @@ class AppointmentIntegrationTest extends AbstractIntegrationTest {
                 Map.of("newDate", newDate, "durationMinutes", 240), memberToken, Map.class);
         assertThat(byMember.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(((Number) byMember.getBody().get("durationMinutes")).intValue()).isEqualTo(30);
+        assertThat(byMember.getBody().get("status")).isEqualTo("RESCHEDULE_REQUESTED");
 
         ResponseEntity<Map> byAdmin = put(BASE + "/" + id + "/reschedule",
                 Map.of("newDate", newDate, "durationMinutes", 90), adminToken, Map.class);
@@ -346,5 +350,199 @@ class AppointmentIntegrationTest extends AbstractIntegrationTest {
         assertThat(adminSlots).anyMatch(slot -> slot.contains("T20:15"));
         assertThat(adminSlots).noneMatch(slot -> slot.contains("T20:30"));
         assertThat(memberSlots).noneMatch(slot -> slot.contains("T09:15"));
+    }
+
+    // ── Confirmação e proposta de remarcação ──────────────────────────────────
+
+    /** Cria um agendamento do membro (padrão do plano, 30 min) em um dia exclusivo e devolve o id. */
+    private Long memberAppointmentAt(LocalDateTime at) {
+        ResponseEntity<Map> created = post(BASE, adminAppointment(at, null), memberToken, Map.class);
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return ((Number) created.getBody().get("id")).longValue();
+    }
+
+    private Map getById(Long id) {
+        return get(BASE + "/" + id, adminToken, Map.class).getBody();
+    }
+
+    private String iso(LocalDateTime dt) {
+        return dt.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+    }
+
+    @Test
+    @Order(17)
+    @DisplayName("POST /appointments/{id}/confirm → cliente confirma (idempotente) e vira CONFIRMED")
+    void clienteConfirmaAgendamento() {
+        Long id = memberAppointmentAt(freshDay().atTime(10, 0));
+
+        ResponseEntity<Map> first = post(BASE + "/" + id + "/confirm", Map.of(), memberToken, Map.class);
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(first.getBody().get("status")).isEqualTo("CONFIRMED");
+        assertThat(first.getBody().get("confirmedAt")).isNotNull();
+
+        ResponseEntity<Map> again = post(BASE + "/" + id + "/confirm", Map.of(), memberToken, Map.class);
+        assertThat(again.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(again.getBody().get("status")).isEqualTo("CONFIRMED");
+    }
+
+    @Test
+    @Order(18)
+    @DisplayName("POST /appointments/{id}/confirm → outro cliente não pode confirmar")
+    void outroClienteNaoConfirma() {
+        Long id = memberAppointmentAt(freshDay().atTime(10, 0));
+
+        ResponseEntity<Map> other = post(BASE + "/" + id + "/confirm", Map.of(), loginAsMember(), Map.class);
+
+        assertThat(other.getStatusCode().is2xxSuccessful()).isFalse();
+        assertThat(getById(id).get("status")).isEqualTo("SCHEDULED");
+    }
+
+    @Test
+    @Order(19)
+    @DisplayName("DELETE /appointments/{id} → cliente cancela; depois não dá mais para confirmar")
+    void clienteCancelaEDepoisNaoConfirma() {
+        Long id = memberAppointmentAt(freshDay().atTime(10, 0));
+
+        assertThat(delete(BASE + "/" + id, memberToken).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(getById(id).get("status")).isEqualTo("CANCELED");
+
+        ResponseEntity<Map> confirm = post(BASE + "/" + id + "/confirm", Map.of(), memberToken, Map.class);
+        assertThat(confirm.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    @Test
+    @Order(20)
+    @DisplayName("Proposta de remarcação: horário antigo continua reservado e o proposto não reserva a agenda")
+    void propostaMantemHorarioAntigoReservado() {
+        LocalDate day = freshDay();
+        Long id = memberAppointmentAt(day.atTime(10, 0));
+
+        ResponseEntity<Map> proposal = post(BASE + "/" + id + "/reschedule-request",
+                Map.of("newDate", iso(day.atTime(16, 0))), memberToken, Map.class);
+        assertThat(proposal.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(proposal.getBody().get("status")).isEqualTo("RESCHEDULE_REQUESTED");
+        assertThat(proposal.getBody().get("scheduledAt").toString()).contains("T10:00");
+        assertThat(proposal.getBody().get("proposedAt").toString()).contains("T16:00");
+
+        // Horário antigo segue ocupado...
+        assertThat(post(BASE, adminAppointment(day.atTime(10, 0), 30), adminToken, Map.class).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        // ...e o proposto NÃO é reservado: o admin ainda consegue agendar nele.
+        assertThat(post(BASE, adminAppointment(day.atTime(16, 0), 30), adminToken, Map.class).getStatusCode())
+                .isEqualTo(HttpStatus.CREATED);
+    }
+
+    @Test
+    @Order(21)
+    @DisplayName("POST /appointments/{id}/reschedule-approve → admin aprova e define a duração; fica CONFIRMED")
+    void adminAprovaRemarcacaoDefinindoDuracao() {
+        LocalDate day = freshDay();
+        Long id = memberAppointmentAt(day.atTime(10, 0));
+        post(BASE + "/" + id + "/reschedule-request", Map.of("newDate", iso(day.atTime(16, 0))), memberToken, Map.class);
+
+        ResponseEntity<Map> approved = post(BASE + "/" + id + "/reschedule-approve",
+                Map.of("durationMinutes", 45), adminToken, Map.class);
+
+        assertThat(approved.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(approved.getBody().get("status")).isEqualTo("CONFIRMED");
+        assertThat(approved.getBody().get("scheduledAt").toString()).contains("T16:00");
+        assertThat(((Number) approved.getBody().get("durationMinutes")).intValue()).isEqualTo(45);
+        assertThat(approved.getBody().get("proposedAt")).isNull();
+    }
+
+    @Test
+    @Order(22)
+    @DisplayName("POST /appointments/{id}/reschedule-reject → admin recusa e o agendamento volta ao original")
+    void adminRecusaRemarcacao() {
+        LocalDate day = freshDay();
+        Long id = memberAppointmentAt(day.atTime(10, 0));
+        post(BASE + "/" + id + "/reschedule-request", Map.of("newDate", iso(day.atTime(16, 0))), memberToken, Map.class);
+
+        ResponseEntity<Map> rejected = post(BASE + "/" + id + "/reschedule-reject",
+                Map.of("reason", "Sem agenda nesse horário"), adminToken, Map.class);
+
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(rejected.getBody().get("status")).isEqualTo("SCHEDULED");
+        assertThat(rejected.getBody().get("scheduledAt").toString()).contains("T10:00");
+        assertThat(rejected.getBody().get("proposedAt")).isNull();
+    }
+
+    @Test
+    @Order(23)
+    @DisplayName("Recusar remarcação de um agendamento já confirmado devolve para CONFIRMED")
+    void recusaPreservaConfirmacaoAnterior() {
+        LocalDate day = freshDay();
+        Long id = memberAppointmentAt(day.atTime(10, 0));
+        post(BASE + "/" + id + "/confirm", Map.of(), memberToken, Map.class);
+        post(BASE + "/" + id + "/reschedule-request", Map.of("newDate", iso(day.atTime(16, 0))), memberToken, Map.class);
+
+        ResponseEntity<Map> rejected = post(BASE + "/" + id + "/reschedule-reject", Map.of(), adminToken, Map.class);
+
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(rejected.getBody().get("status")).isEqualTo("CONFIRMED");
+    }
+
+    @Test
+    @Order(24)
+    @DisplayName("Aprovar com conflito → 422 explicando quem ocupa; admin aprova em outro horário")
+    void conflitoNaAprovacaoPedeOutroHorario() {
+        LocalDate day = freshDay();
+        Long id = memberAppointmentAt(day.atTime(10, 0));
+        post(BASE + "/" + id + "/reschedule-request", Map.of("newDate", iso(day.atTime(16, 0))), memberToken, Map.class);
+        // Alguém ocupa o horário proposto depois do pedido.
+        assertThat(post(BASE, adminAppointment(day.atTime(16, 0), 30), adminToken, Map.class).getStatusCode())
+                .isEqualTo(HttpStatus.CREATED);
+
+        ResponseEntity<Map> conflict = post(BASE + "/" + id + "/reschedule-approve", Map.of(), adminToken, Map.class);
+        assertThat(conflict.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(conflict.getBody().get("message").toString()).contains("Conflito");
+        assertThat(getById(id).get("status")).isEqualTo("RESCHEDULE_REQUESTED");
+
+        ResponseEntity<Map> alternative = post(BASE + "/" + id + "/reschedule-approve",
+                Map.of("newDate", iso(day.atTime(17, 0))), adminToken, Map.class);
+        assertThat(alternative.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(alternative.getBody().get("scheduledAt").toString()).contains("T17:00");
+    }
+
+    @Test
+    @Order(25)
+    @DisplayName("Aprovar/recusar: só admin/funcionário, e só se houver pedido pendente")
+    void aprovacaoExigePermissaoEPedidoPendente() {
+        LocalDate day = freshDay();
+        Long id = memberAppointmentAt(day.atTime(10, 0));
+
+        ResponseEntity<Map> byMember = post(BASE + "/" + id + "/reschedule-approve", Map.of(), memberToken, Map.class);
+        assertThat(byMember.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map> noPending = post(BASE + "/" + id + "/reschedule-approve", Map.of(), adminToken, Map.class);
+        assertThat(noPending.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    @Test
+    @Order(26)
+    @DisplayName("PATCH /appointments/{id}/status → admin não força RESCHEDULE_REQUESTED, mas pode marcar CONFIRMED")
+    void adminMarcaConfirmadoMasNaoForcaProposta() {
+        Long id = memberAppointmentAt(freshDay().atTime(10, 0));
+
+        ResponseEntity<Map> forced = patch(BASE + "/" + id + "/status",
+                Map.of("status", "RESCHEDULE_REQUESTED"), adminToken, Map.class);
+        assertThat(forced.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        ResponseEntity<Map> confirmed = patch(BASE + "/" + id + "/status",
+                Map.of("status", "CONFIRMED"), adminToken, Map.class);
+        assertThat(confirmed.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(confirmed.getBody().get("confirmedAt")).isNotNull();
+    }
+
+    @Test
+    @Order(27)
+    @DisplayName("POST /appointments/{id}/confirm → admin \"mantém\" o agendamento sem remarcação pendente")
+    void adminMantemAgendamento() {
+        Long id = memberAppointmentAt(freshDay().atTime(10, 0));
+
+        ResponseEntity<Map> kept = post(BASE + "/" + id + "/confirm", Map.of(), adminToken, Map.class);
+
+        assertThat(kept.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(kept.getBody().get("status")).isEqualTo("CONFIRMED");
     }
 }

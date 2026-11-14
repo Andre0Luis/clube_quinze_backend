@@ -10,4 +10,8 @@ public interface NotificationService {
     void notifyAppointmentReminder(String email, String name, String scheduledAt, String description, String offsetLabel);
 
     void notifyAppointmentRescheduled(String email, String name, String oldScheduledAt, String newScheduledAt, String description);
+
+    /** E-mail do pedido de confirmação (botões Confirmar / Cancelar / Remarcar apontam para links assinados). */
+    void notifyAppointmentConfirmationRequest(String email, String name, String scheduledAt, String description,
+                                              String confirmUrl, String cancelUrl, String rescheduleUrl);
 }

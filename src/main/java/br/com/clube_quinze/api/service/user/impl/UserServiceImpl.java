@@ -275,7 +275,9 @@ public class UserServiceImpl implements UserService {
                 appointment.getNotes(),
                 appointment.getDurationMinutes(),
                 appointment.getRecurrenceGroupId(),
-                appointment.getRecurrencePeriod());
+                appointment.getRecurrencePeriod(),
+                appointment.getConfirmedAt(),
+                appointment.getProposedAt());
     }
 
     private PreferenceResponse toPreferenceResponse(UserPreference preference) {

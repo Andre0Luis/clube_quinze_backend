@@ -1,6 +1,7 @@
 package br.com.clube_quinze.api.service.appointment.impl;
 
 import br.com.clube_quinze.api.dto.appointment.AppointmentRequest;
+import br.com.clube_quinze.api.dto.appointment.AppointmentRescheduleApprovalRequest;
 import br.com.clube_quinze.api.dto.appointment.AppointmentRescheduleRequest;
 import br.com.clube_quinze.api.dto.appointment.AppointmentResponse;
 import br.com.clube_quinze.api.dto.appointment.AppointmentStatusUpdateRequest;
@@ -29,7 +30,10 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.Optional;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -216,7 +220,7 @@ public class AppointmentServiceImpl implements AppointmentService {
             var clientPush = new java.util.HashMap<String, Object>();
             clientPush.put("userId", saved.getClient().getId());
             clientPush.put("type", "SCHEDULED");
-            clientPush.put("title", "Agendamento confirmado");
+            clientPush.put("title", "Agendamento marcado");
             clientPush.put("body", "Seu agendamento foi criado para " + when);
             clientPush.put("data", data);
             rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("PUSH_MESSAGE", clientPush));
@@ -245,8 +249,11 @@ public class AppointmentServiceImpl implements AppointmentService {
             Long actorId,
             boolean privileged,
             AppointmentRescheduleRequest request) {
+        if (!privileged) {
+            // Cliente nunca remarca direto: vira uma proposta que o admin precisa aprovar.
+            return requestReschedule(appointmentId, actorId, request);
+        }
         Appointment appointment = findAppointment(appointmentId);
-        enforceOwnership(appointment, actorId, privileged);
 
         // capture old time before update
         LocalDateTime oldScheduledAt = appointment.getScheduledAt();
@@ -265,7 +272,10 @@ public class AppointmentServiceImpl implements AppointmentService {
         if (request.notes() != null && !request.notes().isBlank()) {
             appointment.setNotes(request.notes());
         }
+        // Novo horário definido pelo clube: volta a "agendado" (o cliente confirma de novo) e qualquer proposta cai.
         appointment.setStatus(AppointmentStatus.SCHEDULED);
+        appointment.setConfirmedAt(null);
+        appointment.setProposedAt(null);
 
         Appointment updated = appointmentRepository.save(appointment);
 
@@ -311,7 +321,16 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Transactional
     public AppointmentResponse updateStatus(Long appointmentId, AppointmentStatusUpdateRequest request) {
         Appointment appointment = findAppointment(appointmentId);
+        if (request.status() == AppointmentStatus.RESCHEDULE_REQUESTED) {
+            throw new BusinessException("Remarcações são solicitadas pelo cliente; use aprovar/recusar");
+        }
         appointment.setStatus(request.status());
+        if (request.status() == AppointmentStatus.CONFIRMED && appointment.getConfirmedAt() == null) {
+            appointment.setConfirmedAt(LocalDateTime.now(clock));
+        } else if (request.status() == AppointmentStatus.SCHEDULED) {
+            appointment.setConfirmedAt(null);
+        }
+        appointment.setProposedAt(null);
         if (request.notes() != null && !request.notes().isBlank()) {
             appointment.setNotes(request.notes());
         }
@@ -340,23 +359,260 @@ public class AppointmentServiceImpl implements AppointmentService {
     public void cancel(Long appointmentId, Long actorId, boolean privileged) {
         Appointment appointment = findAppointment(appointmentId);
         enforceOwnership(appointment, actorId, privileged);
-        appointment.setStatus(AppointmentStatus.CANCELED);
-        appointmentRepository.save(appointment);
-        // send immediate push notification to user about cancellation (best-effort, async)
-        try {
-            var data = java.util.Map.<String, Object>of("appointmentId", appointment.getId());
-            
-            var pushMap = new java.util.HashMap<String, Object>();
-            pushMap.put("userId", appointment.getClient().getId());
-            pushMap.put("type", "CANCELLED");
-            pushMap.put("title", "Agendamento cancelado");
-            pushMap.put("body", "Seu agendamento foi cancelado pelo clube.");
-            pushMap.put("data", data);
-            
-            rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY, new NotificationMessageDTO("PUSH_MESSAGE", pushMap));
-        } catch (Exception ex) {
-            // do not break cancel flow on notification errors
+        cancelInternal(appointment, !privileged);
+    }
+
+    @Override
+    @Transactional
+    public AppointmentResponse cancelViaLink(Long appointmentId) {
+        Appointment appointment = findAppointment(appointmentId);
+        return toAppointmentResponse(cancelInternal(appointment, true));
+    }
+
+    private Appointment cancelInternal(Appointment appointment, boolean byClient) {
+        if (appointment.getStatus() == AppointmentStatus.CANCELED) {
+            return appointment; // idempotente
         }
+        if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
+            throw new BusinessException("Atendimento já concluído não pode ser cancelado");
+        }
+        appointment.setStatus(AppointmentStatus.CANCELED);
+        appointment.setProposedAt(null);
+        Appointment saved = appointmentRepository.save(appointment);
+
+        String when = saved.getScheduledAt().format(PT_BR_FORMATTER);
+        Map<String, Object> data = appointmentData(saved, "appointment_canceled");
+        if (byClient) {
+            pushToUser(saved.getClient().getId(), "CANCELLED", "Agendamento cancelado",
+                    "Você cancelou seu agendamento de " + when + ".", data);
+            pushToAdmins("ADMIN_APPOINTMENT_CANCELED", "Cliente cancelou",
+                    clientName(saved) + " cancelou o atendimento de " + when + ".",
+                    appointmentData(saved, "admin_appointment_canceled"));
+        } else {
+            pushToUser(saved.getClient().getId(), "CANCELLED", "Agendamento cancelado",
+                    "Seu agendamento foi cancelado pelo clube.", data);
+        }
+        return saved;
+    }
+
+    // ── Confirmação / proposta de remarcação ──────────────────────────────────
+
+    @Override
+    @Transactional
+    public AppointmentResponse confirm(Long appointmentId, Long actorId, boolean privileged) {
+        Appointment appointment = findAppointment(appointmentId);
+        enforceOwnership(appointment, actorId, privileged);
+        return toAppointmentResponse(confirmInternal(appointment, !privileged));
+    }
+
+    @Override
+    @Transactional
+    public AppointmentResponse confirmViaLink(Long appointmentId) {
+        return toAppointmentResponse(confirmInternal(findAppointment(appointmentId), true));
+    }
+
+    private Appointment confirmInternal(Appointment appointment, boolean byClient) {
+        if (appointment.getStatus() == AppointmentStatus.CONFIRMED) {
+            return appointment; // idempotente
+        }
+        if (appointment.getStatus() == AppointmentStatus.RESCHEDULE_REQUESTED) {
+            throw new BusinessException(byClient
+                    ? "Há um pedido de remarcação aguardando a resposta do clube"
+                    : "Há um pedido de remarcação pendente: aprove ou recuse");
+        }
+        if (appointment.getStatus() != AppointmentStatus.SCHEDULED) {
+            throw new BusinessException("Este agendamento não pode mais ser confirmado");
+        }
+        if (!appointment.getScheduledAt().isAfter(LocalDateTime.now(clock))) {
+            throw new BusinessException("Este agendamento já passou");
+        }
+        appointment.setStatus(AppointmentStatus.CONFIRMED);
+        appointment.setConfirmedAt(LocalDateTime.now(clock));
+        Appointment saved = appointmentRepository.save(appointment);
+
+        String when = saved.getScheduledAt().format(PT_BR_FORMATTER);
+        if (byClient) {
+            pushToAdmins("ADMIN_APPOINTMENT_CONFIRMED", "Atendimento confirmado",
+                    clientName(saved) + " confirmou o atendimento de " + when + ".",
+                    appointmentData(saved, "admin_appointment_confirmed"));
+        } else {
+            pushToUser(saved.getClient().getId(), "CONFIRMED", "Agendamento mantido",
+                    "O clube manteve seu agendamento de " + when + ".",
+                    appointmentData(saved, "appointment_confirmed"));
+        }
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public AppointmentResponse requestReschedule(Long appointmentId, Long actorId, AppointmentRescheduleRequest request) {
+        Appointment appointment = findAppointment(appointmentId);
+        enforceOwnership(appointment, actorId, false);
+        if (appointment.getStatus() != AppointmentStatus.SCHEDULED
+                && appointment.getStatus() != AppointmentStatus.CONFIRMED
+                && appointment.getStatus() != AppointmentStatus.RESCHEDULE_REQUESTED) {
+            throw new BusinessException("Este agendamento não pode ser remarcado");
+        }
+        validateAppointmentDate(request.newDate());
+        // O cliente nunca altera a duração: valida o expediente com a duração atual do agendamento.
+        validateBusinessHours(request.newDate(), appointment.getDurationMinutes());
+        if (request.newDate().equals(appointment.getScheduledAt())) {
+            throw new BusinessException("O novo horário é igual ao horário atual");
+        }
+
+        // O horário proposto NÃO reserva a agenda; se já houver conflito, o admin é avisado e decide.
+        Optional<Appointment> conflict =
+                findConflict(request.newDate(), appointment.getDurationMinutes(), appointment.getId());
+
+        LocalDateTime oldAt = appointment.getScheduledAt();
+        appointment.setStatus(AppointmentStatus.RESCHEDULE_REQUESTED);
+        appointment.setProposedAt(request.newDate());
+        Appointment saved = appointmentRepository.save(appointment);
+
+        String oldFmt = oldAt.format(PT_BR_FORMATTER);
+        String newFmt = request.newDate().format(PT_BR_FORMATTER);
+        StringBuilder body = new StringBuilder(clientName(saved))
+                .append(" pediu para remarcar de ").append(oldFmt).append(" para ").append(newFmt).append(".");
+        if (request.notes() != null && !request.notes().isBlank()) {
+            body.append(" Motivo: ").append(request.notes().trim());
+        }
+        conflict.ifPresent(c -> body.append(" ⚠ Conflito: o horário pedido já está ocupado por ")
+                .append(clientName(c)).append(" (").append(describeRange(c)).append(").")
+                .append(" Aprove em outro horário ou recuse."));
+        Map<String, Object> adminData = appointmentData(saved, "admin_reschedule_request");
+        adminData.put("proposedAt", request.newDate().toString());
+        adminData.put("conflict", conflict.isPresent());
+        pushToAdmins("ADMIN_RESCHEDULE_REQUEST", "Pedido de remarcação", body.toString(), adminData);
+
+        pushToUser(saved.getClient().getId(), "RESCHEDULE_REQUESTED", "Pedido de remarcação enviado",
+                "Pedimos a remarcação para " + newFmt + ". Aguarde a aprovação do clube; "
+                        + "enquanto isso seu horário de " + oldFmt + " continua reservado.",
+                appointmentData(saved, "appointment_reschedule_requested"));
+        return toAppointmentResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public AppointmentResponse approveReschedule(Long appointmentId, AppointmentRescheduleApprovalRequest request) {
+        Appointment appointment = findAppointment(appointmentId);
+        if (appointment.getStatus() != AppointmentStatus.RESCHEDULE_REQUESTED || appointment.getProposedAt() == null) {
+            throw new BusinessException("Não há pedido de remarcação pendente para este agendamento");
+        }
+        LocalDateTime target = request != null && request.newDate() != null
+                ? request.newDate()
+                : appointment.getProposedAt();
+        int duration = request != null && request.durationMinutes() != null
+                ? validateDuration(request.durationMinutes())
+                : appointment.getDurationMinutes();
+
+        validateAppointmentDate(target);
+        validateBusinessHours(target, duration);
+        Optional<Appointment> conflict = findConflict(target, duration, appointment.getId());
+        if (conflict.isPresent()) {
+            Appointment c = conflict.get();
+            throw new BusinessException("Conflito: " + target.format(PT_BR_FORMATTER) + " já está ocupado por "
+                    + clientName(c) + " (" + describeRange(c) + "). Aprove em outro horário (informe newDate) "
+                    + "ou recuse o pedido.");
+        }
+
+        LocalDateTime oldAt = appointment.getScheduledAt();
+        appointment.setScheduledAt(target);
+        appointment.setDurationMinutes(duration);
+        appointment.setProposedAt(null);
+        // Cliente propôs e o clube aprovou: as duas partes concordam, então já fica confirmado.
+        appointment.setStatus(AppointmentStatus.CONFIRMED);
+        appointment.setConfirmedAt(LocalDateTime.now(clock));
+        Appointment saved = appointmentRepository.save(appointment);
+
+        String newFmt = target.format(PT_BR_FORMATTER);
+        pushToUser(saved.getClient().getId(), "RESCHEDULED", "Remarcação aprovada",
+                "Seu agendamento foi remarcado para " + newFmt + ".",
+                appointmentData(saved, "appointment_rescheduled"));
+        enqueueRescheduledEmail(saved, oldAt);
+        return toAppointmentResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public AppointmentResponse rejectReschedule(Long appointmentId, String reason) {
+        Appointment appointment = findAppointment(appointmentId);
+        if (appointment.getStatus() != AppointmentStatus.RESCHEDULE_REQUESTED) {
+            throw new BusinessException("Não há pedido de remarcação pendente para este agendamento");
+        }
+        appointment.setProposedAt(null);
+        appointment.setStatus(appointment.getConfirmedAt() != null
+                ? AppointmentStatus.CONFIRMED
+                : AppointmentStatus.SCHEDULED);
+        Appointment saved = appointmentRepository.save(appointment);
+
+        StringBuilder body = new StringBuilder("O clube não pôde remarcar. Seu agendamento segue em ")
+                .append(saved.getScheduledAt().format(PT_BR_FORMATTER)).append(".");
+        if (reason != null && !reason.isBlank()) {
+            body.append(" Motivo: ").append(reason.trim());
+        }
+        pushToUser(saved.getClient().getId(), "RESCHEDULE_REJECTED", "Remarcação não aprovada",
+                body.toString(), appointmentData(saved, "appointment_reschedule_rejected"));
+        return toAppointmentResponse(saved);
+    }
+
+    private void enqueueRescheduledEmail(Appointment updated, LocalDateTime oldAt) {
+        try {
+            User client = updated.getClient();
+            var emailMap = new HashMap<String, Object>();
+            emailMap.put("email", client.getEmail());
+            emailMap.put("name", client.getName());
+            emailMap.put("oldScheduledAt", oldAt.format(PT_BR_FORMATTER));
+            emailMap.put("newScheduledAt", updated.getScheduledAt().format(PT_BR_FORMATTER));
+            emailMap.put("description", updated.getNotes() != null ? updated.getNotes() : "");
+            rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY,
+                    new NotificationMessageDTO("APPOINTMENT_RESCHEDULED_EMAIL", emailMap));
+        } catch (Exception ignored) {
+            // best-effort
+        }
+    }
+
+    // ── helpers de notificação (best-effort: nunca quebram o fluxo principal) ──
+
+    private Map<String, Object> appointmentData(Appointment a, String kind) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("appointmentId", a.getId());
+        data.put("scheduledAt", a.getScheduledAt().toString());
+        data.put("kind", kind);
+        return data;
+    }
+
+    private void pushToUser(Long userId, String type, String title, String body, Map<String, Object> data) {
+        try {
+            var push = new HashMap<String, Object>();
+            push.put("userId", userId);
+            push.put("type", type);
+            push.put("title", title);
+            push.put("body", body);
+            push.put("data", data);
+            rabbitTemplate.convertAndSend(RabbitMQConfig.NOTIFICATION_EXCHANGE, RabbitMQConfig.NOTIFICATION_ROUTING_KEY,
+                    new NotificationMessageDTO("PUSH_MESSAGE", push));
+        } catch (Exception ignored) {
+            // best-effort
+        }
+    }
+
+    private void pushToAdmins(String type, String title, String body, Map<String, Object> data) {
+        try {
+            for (User admin : userRepository.findByRole(RoleType.CLUB_ADMIN)) {
+                pushToUser(admin.getId(), type, title, body, data);
+            }
+        } catch (Exception ignored) {
+            // best-effort
+        }
+    }
+
+    private String clientName(Appointment a) {
+        return a.getClient() != null && a.getClient().getName() != null ? a.getClient().getName() : "Cliente";
+    }
+
+    private String describeRange(Appointment a) {
+        return a.getScheduledAt().toLocalTime() + "–"
+                + a.getScheduledAt().plusMinutes(a.getDurationMinutes()).toLocalTime();
     }
 
     @Override
@@ -429,10 +685,17 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     private void ensureSlotAvailable(LocalDateTime scheduledAt, Integer durationMinutes, Long appointmentIdToIgnore) {
+        if (findConflict(scheduledAt, durationMinutes, appointmentIdToIgnore).isPresent()) {
+            throw new BusinessException("Horário indisponível para agendamento");
+        }
+    }
+
+    /** Primeiro atendimento ativo que se sobrepõe ao intervalo pedido (ignora cancelados e o próprio agendamento). */
+    private Optional<Appointment> findConflict(LocalDateTime scheduledAt, Integer durationMinutes, Long appointmentIdToIgnore) {
         LocalDateTime dayStart = scheduledAt.toLocalDate().atTime(OPENING_TIME);
         LocalDateTime dayEnd = scheduledAt.toLocalDate().atTime(CLOSING_TIME);
         List<Appointment> appointments = appointmentRepository.findByScheduledAtBetween(dayStart, dayEnd);
-        
+
         LocalDateTime requestEnd = scheduledAt.plusMinutes(durationMinutes != null ? durationMinutes : 60);
 
         for (Appointment existing : appointments) {
@@ -447,9 +710,10 @@ public class AppointmentServiceImpl implements AppointmentService {
 
             // Verifica sobreposição de horários
             if (scheduledAt.isBefore(existingEnd) && existingStart.isBefore(requestEnd)) {
-                throw new BusinessException("Horário indisponível para agendamento");
+                return Optional.of(existing);
             }
         }
+        return Optional.empty();
     }
 
     private void validateAppointmentDate(LocalDateTime scheduledAt) {
@@ -515,7 +779,9 @@ public class AppointmentServiceImpl implements AppointmentService {
                 appointment.getNotes(),
                 appointment.getDurationMinutes(),
                 appointment.getRecurrenceGroupId(),
-                appointment.getRecurrencePeriod());
+                appointment.getRecurrencePeriod(),
+                appointment.getConfirmedAt(),
+                appointment.getProposedAt());
     }
 
     /**
