@@ -80,12 +80,15 @@ public class BrevoNotificationService implements NotificationService {
 
     @Override
     @Async("asyncExecutor")
-    public void notifyAppointmentReminder(String email, String name, String scheduledAt, String description, String offsetLabel) {
+    public void notifyAppointmentReminder(String email, String name, String scheduledAt, String description, String offsetLabel,
+                                          String googleCalendarUrl, String icsUrl) {
         Context context = new Context();
         context.setVariable("name", name);
         context.setVariable("scheduledAt", scheduledAt);
         context.setVariable("description", description);
         context.setVariable("offsetLabel", offsetLabel);
+        context.setVariable("googleCalendarUrl", googleCalendarUrl);
+        context.setVariable("icsUrl", icsUrl);
         String html = templateEngine.process("appointment-reminder", context);
         String subject = "Lembrete: você tem um agendamento " + offsetLabel;
         sendEmail(email, name, subject, html);
@@ -93,12 +96,15 @@ public class BrevoNotificationService implements NotificationService {
 
     @Override
     @Async("asyncExecutor")
-    public void notifyAppointmentRescheduled(String email, String name, String oldScheduledAt, String newScheduledAt, String description) {
+    public void notifyAppointmentRescheduled(String email, String name, String oldScheduledAt, String newScheduledAt, String description,
+                                             String googleCalendarUrl, String icsUrl) {
         Context context = new Context();
         context.setVariable("name", name);
         context.setVariable("oldScheduledAt", oldScheduledAt);
         context.setVariable("newScheduledAt", newScheduledAt);
         context.setVariable("description", description);
+        context.setVariable("googleCalendarUrl", googleCalendarUrl);
+        context.setVariable("icsUrl", icsUrl);
         String html = templateEngine.process("appointment-rescheduled", context);
         String subject = "Seu agendamento foi alterado";
         sendEmail(email, name, subject, html);
@@ -107,7 +113,8 @@ public class BrevoNotificationService implements NotificationService {
     @Override
     @Async("asyncExecutor")
     public void notifyAppointmentConfirmationRequest(String email, String name, String scheduledAt, String description,
-                                                     String confirmUrl, String cancelUrl, String rescheduleUrl) {
+                                                     String confirmUrl, String cancelUrl, String rescheduleUrl,
+                                                     String googleCalendarUrl, String icsUrl) {
         Context context = new Context();
         context.setVariable("name", name);
         context.setVariable("scheduledAt", scheduledAt);
@@ -115,6 +122,8 @@ public class BrevoNotificationService implements NotificationService {
         context.setVariable("confirmUrl", confirmUrl);
         context.setVariable("cancelUrl", cancelUrl);
         context.setVariable("rescheduleUrl", rescheduleUrl);
+        context.setVariable("googleCalendarUrl", googleCalendarUrl);
+        context.setVariable("icsUrl", icsUrl);
         String html = templateEngine.process("appointment-confirmation", context);
         String subject = "Confirme seu agendamento de " + scheduledAt;
         sendEmail(email, name, subject, html);

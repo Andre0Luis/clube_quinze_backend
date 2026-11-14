@@ -93,7 +93,7 @@ services:
       RESET_BASE_URL: https://staging.clubequinzeapp.cloud:8443/reset-password
       # Porta de entrada: sem a chave, 404. Links de e-mail e retorno do Google abrem sem chave.
       APP_STAGING_ACCESS_KEY: ${STAGING_ACCESS_KEY:?defina STAGING_ACCESS_KEY}
-      APP_STAGING_PUBLIC_PATHS: /appointment-action,/integrations/google/callback
+      APP_STAGING_PUBLIC_PATHS: /appointment-action,/appointment-calendar,/integrations/google/callback
     ports:
       - "127.0.0.1:8081:8080"
     volumes:

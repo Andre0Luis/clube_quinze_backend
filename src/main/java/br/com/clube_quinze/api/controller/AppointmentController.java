@@ -7,6 +7,9 @@ import br.com.clube_quinze.api.dto.appointment.AppointmentRescheduleRequest;
 import br.com.clube_quinze.api.dto.appointment.AppointmentResponse;
 import br.com.clube_quinze.api.dto.appointment.AppointmentStatusUpdateRequest;
 import br.com.clube_quinze.api.dto.appointment.AvailableSlotResponse;
+import br.com.clube_quinze.api.dto.appointment.CalendarLinksResponse;
+import br.com.clube_quinze.api.model.appointment.Appointment;
+import br.com.clube_quinze.api.service.appointment.AppointmentCalendarService;
 import br.com.clube_quinze.api.dto.common.PageResponse;
 import br.com.clube_quinze.api.exception.UnauthorizedException;
 import br.com.clube_quinze.api.model.enumeration.AppointmentStatus;
@@ -39,9 +42,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AppointmentController {
 
     private final AppointmentService appointmentService;
+    private final AppointmentCalendarService calendarService;
 
-    public AppointmentController(AppointmentService appointmentService) {
+    public AppointmentController(AppointmentService appointmentService, AppointmentCalendarService calendarService) {
         this.appointmentService = appointmentService;
+        this.calendarService = calendarService;
     }
 
     @GetMapping("/availability")
@@ -86,6 +91,27 @@ public class AppointmentController {
         boolean privileged = isPrivileged(user);
         AppointmentResponse response = appointmentService.getAppointment(appointmentId, user.getId(), privileged);
         return ResponseEntity.ok(response);
+    }
+
+    /** Arquivo .ics do agendamento (Apple Calendar, Outlook etc.). */
+    @GetMapping(value = "/{appointmentId}/calendar.ics")
+    public ResponseEntity<String> calendarIcs(
+            @PathVariable Long appointmentId,
+            @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser) {
+        ClubeQuinzeUserDetails user = requireAuthenticated(currentUser);
+        Appointment appointment = calendarService.findForUser(appointmentId, user.getId(), isPrivileged(user));
+        return AppointmentCalendarPageController.icsResponse(appointment, calendarService.buildIcs(appointment));
+    }
+
+    /** Links "Adicionar ao Google Agenda" e download do .ics (link assinado, abre no celular). */
+    @GetMapping("/{appointmentId}/calendar-links")
+    public ResponseEntity<CalendarLinksResponse> calendarLinks(
+            @PathVariable Long appointmentId,
+            @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser) {
+        ClubeQuinzeUserDetails user = requireAuthenticated(currentUser);
+        Appointment appointment = calendarService.findForUser(appointmentId, user.getId(), isPrivileged(user));
+        return ResponseEntity.ok(new CalendarLinksResponse(
+                calendarService.googleCalendarUrl(appointment), calendarService.icsUrl(appointment)));
     }
 
     @PutMapping("/{appointmentId}/reschedule")

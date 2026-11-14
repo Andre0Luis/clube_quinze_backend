@@ -13,6 +13,7 @@ import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.config.AppConfig;
 import br.com.clube_quinze.api.service.appointment.AppointmentActionTokenService;
+import br.com.clube_quinze.api.service.appointment.AppointmentCalendarService;
 import br.com.clube_quinze.api.service.appointment.AppointmentActionTokenService.Action;
 import br.com.clube_quinze.api.service.settings.SettingsService;
 import java.time.Instant;
@@ -60,6 +61,7 @@ public class AppointmentNotificationScheduler {
     private final UserRepository userRepository;
     private final SettingsService settingsService;
     private final AppointmentActionTokenService tokenService;
+    private final AppointmentCalendarService calendarService;
     private final String publicBaseUrl;
 
     public AppointmentNotificationScheduler(
@@ -69,6 +71,7 @@ public class AppointmentNotificationScheduler {
             UserRepository userRepository,
             SettingsService settingsService,
             AppointmentActionTokenService tokenService,
+            AppointmentCalendarService calendarService,
             @Value("${app.public.base-url}") String publicBaseUrl) {
         this.appointmentRepository = appointmentRepository;
         this.reminderLogRepository = reminderLogRepository;
@@ -76,6 +79,7 @@ public class AppointmentNotificationScheduler {
         this.userRepository = userRepository;
         this.settingsService = settingsService;
         this.tokenService = tokenService;
+        this.calendarService = calendarService;
         this.publicBaseUrl = publicBaseUrl.endsWith("/")
                 ? publicBaseUrl.substring(0, publicBaseUrl.length() - 1)
                 : publicBaseUrl;
@@ -151,6 +155,8 @@ public class AppointmentNotificationScheduler {
                 emailData.put("scheduledAt", formattedDate);
                 emailData.put("description", description);
                 emailData.put("offsetLabel", offsetLabel);
+                emailData.put("googleCalendarUrl", calendarService.googleCalendarUrl(a));
+                emailData.put("icsUrl", calendarService.icsUrl(a));
                 rabbitTemplate.convertAndSend(
                         RabbitMQConfig.NOTIFICATION_EXCHANGE,
                         RabbitMQConfig.NOTIFICATION_ROUTING_KEY,
@@ -217,6 +223,8 @@ public class AppointmentNotificationScheduler {
             emailData.put("confirmUrl", confirmUrl);
             emailData.put("cancelUrl", cancelUrl);
             emailData.put("rescheduleUrl", rescheduleUrl);
+            emailData.put("googleCalendarUrl", calendarService.googleCalendarUrl(a));
+            emailData.put("icsUrl", calendarService.icsUrl(a));
             rabbitTemplate.convertAndSend(
                     RabbitMQConfig.NOTIFICATION_EXCHANGE,
                     RabbitMQConfig.NOTIFICATION_ROUTING_KEY,
