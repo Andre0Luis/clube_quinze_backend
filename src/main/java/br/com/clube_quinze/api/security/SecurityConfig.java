@@ -55,6 +55,7 @@ public class SecurityConfig {
             .requestMatchers("/actuator/health", "/api-docs/**", "/swagger-ui.html", "/swagger-ui/**",
                 "/api/v1/auth/**")
                         .permitAll()
+                        .requestMatchers(HttpMethod.GET, "/actuator/info").permitAll()
                         .requestMatchers(HttpMethod.GET, "/reset-password").permitAll()
                         // Botões do e-mail de confirmação: protegidos por token assinado, não por JWT.
                         .requestMatchers(HttpMethod.GET, "/appointment-action").permitAll()
