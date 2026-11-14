@@ -146,6 +146,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -181,6 +183,7 @@ jobs:
             echo "image=$IMAGE"
             echo "version=$POM_VERSION"
             echo "ref_tag=$(echo "$TAGS" | tail -n1)"
+            echo "tag=$(echo "$TAGS" | tail -n1 | sed 's/.*://')"
             echo "tags<<EOF"; echo "$TAGS"; echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -216,3 +219,15 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "0"
+
+  staging:
+    name: Homologação
+    # Só roda quando a homologação está habilitada (variável STAGING_ENABLED) e a imagem foi publicada.
+    if: github.event_name == 'push' && vars.STAGING_ENABLED == 'true'
+    needs: image
+    permissions:
+      contents: read
+    uses: ./.github/workflows/deploy-staging.yml
+    with:
+      tag: ${{ needs.image.outputs.tag }}
+    secrets: inherit
