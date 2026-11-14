@@ -43,4 +43,11 @@ public class LoggingNotificationService implements NotificationService {
     public void notifyAppointmentRescheduled(String email, String name, String oldScheduledAt, String newScheduledAt, String description) {
         log.info("[async] Agendamento remarcado para email={} name={} de={} para={}", email, name, oldScheduledAt, newScheduledAt);
     }
+
+    @Override
+    @Async("asyncExecutor")
+    public void notifyAppointmentConfirmationRequest(String email, String name, String scheduledAt, String description,
+                                                     String confirmUrl, String cancelUrl, String rescheduleUrl) {
+        log.info("[async] Pedido de confirmação para email={} name={} em={} (links não logados)", email, name, scheduledAt);
+    }
 }

@@ -67,6 +67,14 @@ public class Appointment {
     @Column(name = "recurrence_period", length = 20)
     private String recurrencePeriod;
 
+    /** Quando o agendamento foi confirmado (cliente ou admin). Nulo enquanto não confirmado. */
+    @Column(name = "confirmed_at")
+    private LocalDateTime confirmedAt;
+
+    /** Novo horário proposto pelo cliente (status RESCHEDULE_REQUESTED). Nulo caso contrário. */
+    @Column(name = "proposed_at")
+    private LocalDateTime proposedAt;
+
     @PrePersist
     void prePersist() {
         LocalDateTime now = LocalDateTime.now();
@@ -173,5 +181,21 @@ public class Appointment {
 
     public void setRecurrencePeriod(String recurrencePeriod) {
         this.recurrencePeriod = recurrencePeriod;
+    }
+
+    public LocalDateTime getConfirmedAt() {
+        return confirmedAt;
+    }
+
+    public void setConfirmedAt(LocalDateTime confirmedAt) {
+        this.confirmedAt = confirmedAt;
+    }
+
+    public LocalDateTime getProposedAt() {
+        return proposedAt;
+    }
+
+    public void setProposedAt(LocalDateTime proposedAt) {
+        this.proposedAt = proposedAt;
     }
 }

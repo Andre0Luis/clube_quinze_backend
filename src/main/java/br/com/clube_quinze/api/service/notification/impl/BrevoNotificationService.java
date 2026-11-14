@@ -104,6 +104,22 @@ public class BrevoNotificationService implements NotificationService {
         sendEmail(email, name, subject, html);
     }
 
+    @Override
+    @Async("asyncExecutor")
+    public void notifyAppointmentConfirmationRequest(String email, String name, String scheduledAt, String description,
+                                                     String confirmUrl, String cancelUrl, String rescheduleUrl) {
+        Context context = new Context();
+        context.setVariable("name", name);
+        context.setVariable("scheduledAt", scheduledAt);
+        context.setVariable("description", description);
+        context.setVariable("confirmUrl", confirmUrl);
+        context.setVariable("cancelUrl", cancelUrl);
+        context.setVariable("rescheduleUrl", rescheduleUrl);
+        String html = templateEngine.process("appointment-confirmation", context);
+        String subject = "Confirme seu agendamento de " + scheduledAt;
+        sendEmail(email, name, subject, html);
+    }
+
     private void sendEmail(String toEmail, String toName, String subject, String html) {
         String url = baseUrl + "/v3/smtp/email";
         Map<String, Object> payload = Map.of(

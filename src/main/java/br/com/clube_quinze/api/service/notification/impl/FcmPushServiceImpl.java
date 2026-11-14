@@ -4,6 +4,8 @@ import br.com.clube_quinze.api.repository.PushTokenRepository;
 import br.com.clube_quinze.api.service.notification.ExpoPushService;
 import com.google.firebase.messaging.AndroidConfig;
 import com.google.firebase.messaging.AndroidNotification;
+import com.google.firebase.messaging.ApnsConfig;
+import com.google.firebase.messaging.Aps;
 import com.google.firebase.messaging.BatchResponse;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
@@ -49,20 +51,28 @@ public class FcmPushServiceImpl implements ExpoPushService {
 
         List<Message> fcmMessages = new ArrayList<>();
         for (ExpoMessage m : messages) {
-            fcmMessages.add(Message.builder()
+            Map<String, String> payload = toStringMap(m.data());
+            Message.Builder builder = Message.builder()
                     .setToken(m.to())
                     .setNotification(Notification.builder()
                             .setTitle(m.title())
                             .setBody(m.body())
                             .build())
-                    .putAllData(toStringMap(m.data()))
+                    .putAllData(payload)
                     .setAndroidConfig(AndroidConfig.builder()
                             .setPriority(AndroidConfig.Priority.HIGH)
                             .setNotification(AndroidNotification.builder()
                                     .setChannelId("agendamentos")
                                     .build())
-                            .build())
-                    .build());
+                            .build());
+            // Categoria do iOS: permite botões de ação (Confirmar/Cancelar/Remarcar) direto na notificação.
+            String category = payload.get("categoryId");
+            if (category != null && !category.isBlank()) {
+                builder.setApnsConfig(ApnsConfig.builder()
+                        .setAps(Aps.builder().setCategory(category).build())
+                        .build());
+            }
+            fcmMessages.add(builder.build());
         }
 
         try {

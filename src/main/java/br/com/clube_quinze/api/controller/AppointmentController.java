@@ -1,6 +1,8 @@
 package br.com.clube_quinze.api.controller;
 
 import br.com.clube_quinze.api.dto.appointment.AppointmentRequest;
+import br.com.clube_quinze.api.dto.appointment.AppointmentRescheduleApprovalRequest;
+import br.com.clube_quinze.api.dto.appointment.AppointmentRescheduleRejectRequest;
 import br.com.clube_quinze.api.dto.appointment.AppointmentRescheduleRequest;
 import br.com.clube_quinze.api.dto.appointment.AppointmentResponse;
 import br.com.clube_quinze.api.dto.appointment.AppointmentStatusUpdateRequest;
@@ -45,8 +47,12 @@ public class AppointmentController {
     @GetMapping("/availability")
     public ResponseEntity<AvailableSlotResponse> listAvailableSlots(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-            @RequestParam(name = "tier", required = false) MembershipTier tier) {
-        return ResponseEntity.ok(appointmentService.getAvailableSlots(date, tier));
+            @RequestParam(name = "tier", required = false) MembershipTier tier,
+            @RequestParam(name = "durationMinutes", required = false) Integer durationMinutes,
+            @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser) {
+        // Duração customizada é recurso do admin/funcionário; para clientes é ignorada.
+        Integer effectiveDuration = currentUser != null && isPrivileged(currentUser) ? durationMinutes : null;
+        return ResponseEntity.ok(appointmentService.getAvailableSlots(date, tier, effectiveDuration));
     }
 
     @PostMapping
@@ -95,6 +101,42 @@ public class AppointmentController {
                 privileged,
                 request);
         return ResponseEntity.ok(response);
+    }
+
+    /** Cliente confirma presença; admin/funcionário "mantém" o agendamento. */
+    @PostMapping("/{appointmentId}/confirm")
+    public ResponseEntity<AppointmentResponse> confirm(
+            @PathVariable Long appointmentId,
+            @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser) {
+        ClubeQuinzeUserDetails user = requireAuthenticated(currentUser);
+        return ResponseEntity.ok(appointmentService.confirm(appointmentId, user.getId(), isPrivileged(user)));
+    }
+
+    /** Cliente propõe um novo horário; o admin precisa aprovar. */
+    @PostMapping("/{appointmentId}/reschedule-request")
+    public ResponseEntity<AppointmentResponse> requestReschedule(
+            @PathVariable Long appointmentId,
+            @AuthenticationPrincipal ClubeQuinzeUserDetails currentUser,
+            @Valid @RequestBody AppointmentRescheduleRequest request) {
+        ClubeQuinzeUserDetails user = requireAuthenticated(currentUser);
+        return ResponseEntity.ok(appointmentService.requestReschedule(appointmentId, user.getId(), request));
+    }
+
+    @PostMapping("/{appointmentId}/reschedule-approve")
+    @PreAuthorize("hasAnyRole('CLUB_EMPLOYE','CLUB_ADMIN')")
+    public ResponseEntity<AppointmentResponse> approveReschedule(
+            @PathVariable Long appointmentId,
+            @Valid @RequestBody(required = false) AppointmentRescheduleApprovalRequest request) {
+        return ResponseEntity.ok(appointmentService.approveReschedule(appointmentId, request));
+    }
+
+    @PostMapping("/{appointmentId}/reschedule-reject")
+    @PreAuthorize("hasAnyRole('CLUB_EMPLOYE','CLUB_ADMIN')")
+    public ResponseEntity<AppointmentResponse> rejectReschedule(
+            @PathVariable Long appointmentId,
+            @Valid @RequestBody(required = false) AppointmentRescheduleRejectRequest request) {
+        return ResponseEntity.ok(appointmentService.rejectReschedule(
+                appointmentId, request != null ? request.reason() : null));
     }
 
     @DeleteMapping("/{appointmentId}")

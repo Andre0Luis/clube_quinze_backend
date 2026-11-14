@@ -40,6 +40,9 @@ public class NotificationConsumer {
                 case "APPOINTMENT_REMINDER_EMAIL":
                     handleAppointmentReminderEmail(message.getData());
                     break;
+                case "APPOINTMENT_CONFIRMATION_EMAIL":
+                    handleAppointmentConfirmationEmail(message.getData());
+                    break;
                 case "APPOINTMENT_RESCHEDULED_EMAIL":
                     handleAppointmentRescheduledEmail(message.getData());
                     break;
@@ -86,6 +89,18 @@ public class NotificationConsumer {
                 getString(data, "scheduledAt"),
                 getString(data, "description"),
                 getString(data, "offsetLabel")
+        );
+    }
+
+    private void handleAppointmentConfirmationEmail(Map<String, Object> data) {
+        notificationService.notifyAppointmentConfirmationRequest(
+                getString(data, "email"),
+                getString(data, "name"),
+                getString(data, "scheduledAt"),
+                getString(data, "description"),
+                getString(data, "confirmUrl"),
+                getString(data, "cancelUrl"),
+                getString(data, "rescheduleUrl")
         );
     }
 

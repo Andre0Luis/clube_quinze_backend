@@ -4,6 +4,8 @@ import java.io.Serializable;
 
 import br.com.clube_quinze.api.model.enumeration.MembershipTier;
 import jakarta.validation.constraints.Future;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 
@@ -21,6 +23,8 @@ public record AppointmentRequest(
         String serviceType,
 
         String notes,
+        @Min(value = 15, message = "Duração mínima é de 15 minutos")
+        @Max(value = 480, message = "Duração máxima é de 8 horas")
         Integer durationMinutes,
         
         Boolean recurring,

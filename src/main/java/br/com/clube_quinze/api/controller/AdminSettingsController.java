@@ -1,6 +1,7 @@
 package br.com.clube_quinze.api.controller;
 
 import br.com.clube_quinze.api.dto.settings.AdminNotificationSettings;
+import br.com.clube_quinze.api.dto.settings.AppointmentConfirmationSettings;
 import br.com.clube_quinze.api.service.settings.SettingsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -43,5 +44,21 @@ public class AdminSettingsController {
         return ResponseEntity.ok(new AdminNotificationSettings(
                 settingsService.isAdminReminderEnabled(),
                 settingsService.getAdminReminderOffsets()));
+    }
+
+    /** Parâmetros do fluxo de confirmação de agendamentos (prazos, lembretes, liga/desliga). */
+    @GetMapping("/appointments")
+    @Operation(summary = "Obter configuração do fluxo de confirmação de agendamentos")
+    @PreAuthorize("hasRole('CLUB_ADMIN')")
+    public ResponseEntity<AppointmentConfirmationSettings> getAppointmentSettings() {
+        return ResponseEntity.ok(settingsService.getAppointmentConfirmationSettings());
+    }
+
+    @PutMapping("/appointments")
+    @Operation(summary = "Atualizar configuração do fluxo de confirmação de agendamentos")
+    @PreAuthorize("hasRole('CLUB_ADMIN')")
+    public ResponseEntity<AppointmentConfirmationSettings> updateAppointmentSettings(
+            @Valid @RequestBody AppointmentConfirmationSettings request) {
+        return ResponseEntity.ok(settingsService.updateAppointmentConfirmationSettings(request));
     }
 }

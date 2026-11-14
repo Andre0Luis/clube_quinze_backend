@@ -82,13 +82,51 @@ class MariaDbMigrationIntegrationTest extends AbstractIntegrationTest {
 
         // Leitura e escrita de verdade no MariaDB (tipos de data, enums gravados como texto, duração).
         ResponseEntity<Map> rescheduled = put("/api/v1/appointments/" + id + "/reschedule",
-                Map.of("newDate", day.atTime(16, 0).format(iso)), adminToken, Map.class);
+                Map.of("newDate", day.atTime(16, 0).format(iso), "durationMinutes", 45), adminToken, Map.class);
         assertThat(rescheduled.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(rescheduled.getBody().get("scheduledAt").toString()).contains("T16:00");
+        assertThat(((Number) rescheduled.getBody().get("durationMinutes")).intValue()).isEqualTo(45);
 
         ResponseEntity<Map> completed = patch("/api/v1/appointments/" + id + "/status",
                 Map.of("status", "COMPLETED"), adminToken, Map.class);
         assertThat(completed.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(completed.getBody().get("status")).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    @DisplayName("Fluxo de confirmação e remarcação grava e lê confirmed_at/proposed_at (migration V16)")
+    void fluxoDeConfirmacaoGravaNasColunasNovas() {
+        String adminToken = adminToken();
+        String email = "mariadb_confirm_" + UUID.randomUUID().toString().substring(0, 8) + "@test.com";
+        ResponseEntity<Map> reg = postPublic("/api/v1/auth/register",
+                Map.of("name", "Membro Confirma", "email", email, "password", "Senha@1234",
+                        "membershipTier", "QUINZE_STANDARD"), Map.class);
+        String memberToken = (String) reg.getBody().get("accessToken");
+        Long memberId = ((Number) get("/api/v1/users/me", memberToken, Map.class).getBody().get("id")).longValue();
+
+        LocalDate day = LocalDate.now().plusDays(310);
+        DateTimeFormatter iso = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+        ResponseEntity<Map> created = post("/api/v1/appointments", Map.of(
+                "clientId", memberId, "scheduledAt", day.atTime(10, 0).format(iso),
+                "appointmentTier", "QUINZE_STANDARD", "serviceType", "Corte confirmação"), memberToken, Map.class);
+        Long id = ((Number) created.getBody().get("id")).longValue();
+
+        ResponseEntity<Map> proposal = post("/api/v1/appointments/" + id + "/reschedule-request",
+                Map.of("newDate", day.atTime(16, 0).format(iso)), memberToken, Map.class);
+        assertThat(proposal.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(proposal.getBody().get("status")).isEqualTo("RESCHEDULE_REQUESTED");
+        assertThat(proposal.getBody().get("proposedAt")).isNotNull();
+
+        ResponseEntity<Map> approved = post("/api/v1/appointments/" + id + "/reschedule-approve",
+                Map.of("durationMinutes", 45), adminToken, Map.class);
+        assertThat(approved.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(approved.getBody().get("status")).isEqualTo("CONFIRMED");
+        assertThat(approved.getBody().get("confirmedAt")).isNotNull();
+        assertThat(approved.getBody().get("proposedAt")).isNull();
+
+        // O que foi gravado é o que se lê de volta.
+        ResponseEntity<Map> reloaded = get("/api/v1/appointments/" + id, adminToken, Map.class);
+        assertThat(reloaded.getBody().get("status")).isEqualTo("CONFIRMED");
+        assertThat(reloaded.getBody().get("scheduledAt").toString()).contains("T16:00");
     }
 }

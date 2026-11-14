@@ -95,7 +95,7 @@ jobs:
           if [ -z "$f" ]; then
             echo "::error::Relatório do teste de MariaDB não encontrado."; exit 1
           fi
-          if ! grep -q 'tests="1"' "$f" || ! grep -q 'skipped="0"' "$f"; then
+          if ! grep -Eq 'tests="[1-9][0-9]*"' "$f" || ! grep -q 'skipped="0"' "$f"; then
             echo "::error::O teste de MariaDB foi ignorado ou não executou."; exit 1
           fi
 
