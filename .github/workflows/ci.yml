@@ -88,6 +88,17 @@ jobs:
       - name: Flyway + Hibernate validate no MariaDB
         run: ./mvnw -B -ntp test -Dgroups=mariadb -Dtest=MariaDbMigrationIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false
 
+      # Trava de segurança: o job não pode ficar verde se o teste foi ignorado ou não rodou.
+      - name: Confirmar que o teste de MariaDB executou
+        run: |
+          f=$(find target/surefire-reports -name 'TEST-*MariaDbMigrationIntegrationTest.xml' | head -n1)
+          if [ -z "$f" ]; then
+            echo "::error::Relatório do teste de MariaDB não encontrado."; exit 1
+          fi
+          if ! grep -q 'tests="1"' "$f" || ! grep -q 'skipped="0"' "$f"; then
+            echo "::error::O teste de MariaDB foi ignorado ou não executou."; exit 1
+          fi
+
   quality:
     name: Qualidade (SpotBugs, relatório)
     runs-on: ubuntu-latest

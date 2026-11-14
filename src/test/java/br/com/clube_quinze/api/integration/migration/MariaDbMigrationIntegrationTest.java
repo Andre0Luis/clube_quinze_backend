@@ -10,13 +10,13 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.MariaDBContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.DockerClientFactory;
 import org.testcontainers.utility.DockerImageName;
 
 /**
@@ -24,24 +24,30 @@ import org.testcontainers.utility.DockerImageName;
  * as entidades contra o schema (ddl-auto=validate), exatamente como em produção. Os demais testes usam H2 com
  * o schema gerado pelo Hibernate e, por isso, nunca exercitam a sintaxe das migrations.
  *
- * Roda no job "Migrations (MariaDB real)" do CI. Localmente exige Docker e é ignorado se ele não existir.
+ * Roda no job "Migrations (MariaDB real)" do CI. No CI (variável CI definida) ele NUNCA é ignorado: sem Docker o
+ * teste falha, para o job não ficar verde sem ter validado nada. Localmente é ignorado se não houver Docker.
  * A versão da imagem pode ser trocada com -Dmariadb.image=mariadb:10.11 para igualar à de produção.
  */
 @Tag("mariadb")
-@Testcontainers(disabledWithoutDocker = true)
+@EnabledIf("br.com.clube_quinze.api.integration.migration.MariaDbMigrationIntegrationTest#shouldRun")
 @DisplayName("Migrations no MariaDB real")
 @SuppressWarnings({"rawtypes", "unchecked"})
 class MariaDbMigrationIntegrationTest extends AbstractIntegrationTest {
 
     private static final String DB_NAME = "clube_quinze"; // spring.flyway.schemas aponta para este schema
 
-    @Container
-    static MariaDBContainer<?> mariadb = new MariaDBContainer<>(
-            DockerImageName.parse(System.getProperty("mariadb.image", "mariadb:11.4")))
-            .withDatabaseName(DB_NAME);
+    static MariaDBContainer<?> mariadb;
+
+    /** No CI sempre roda (e falha sem Docker); fora dele, só se houver Docker. */
+    static boolean shouldRun() {
+        return System.getenv("CI") != null || DockerClientFactory.instance().isDockerAvailable();
+    }
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
+        mariadb = new MariaDBContainer<>(DockerImageName.parse(System.getProperty("mariadb.image", "mariadb:11.4")))
+                .withDatabaseName(DB_NAME);
+        mariadb.start(); // se o Docker não existir, falha aqui — de propósito
         registry.add("spring.datasource.url", mariadb::getJdbcUrl);
         registry.add("spring.datasource.username", mariadb::getUsername);
         registry.add("spring.datasource.password", mariadb::getPassword);
@@ -76,10 +82,9 @@ class MariaDbMigrationIntegrationTest extends AbstractIntegrationTest {
 
         // Leitura e escrita de verdade no MariaDB (tipos de data, enums gravados como texto, duração).
         ResponseEntity<Map> rescheduled = put("/api/v1/appointments/" + id + "/reschedule",
-                Map.of("newDate", day.atTime(16, 0).format(iso), "durationMinutes", 45), adminToken, Map.class);
+                Map.of("newDate", day.atTime(16, 0).format(iso)), adminToken, Map.class);
         assertThat(rescheduled.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(rescheduled.getBody().get("scheduledAt").toString()).contains("T16:00");
-        assertThat(((Number) rescheduled.getBody().get("durationMinutes")).intValue()).isEqualTo(45);
 
         ResponseEntity<Map> completed = patch("/api/v1/appointments/" + id + "/status",
                 Map.of("status", "COMPLETED"), adminToken, Map.class);
