@@ -1,0 +1,69 @@
+name: Deploy homologação
+
+# Sobe a imagem validada pelo CI na homologação (stack isolada na VPS) e roda o teste de fumaça.
+# É chamado pelo CI depois de gerar a imagem (develop, release/*, hotfix/*) e também pode ser disparado à mão.
+# Fica inerte enquanto a variável do repositório STAGING_ENABLED não for "true".
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag da imagem (ex.: develop-abc1234 ou 1.18.0-rc.abc1234)"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag da imagem (ex.: develop-abc1234 ou 1.18.0-rc.abc1234)"
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Publicar na homologação
+    if: vars.STAGING_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: staging
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Deploy na Hostinger (projeto clube-quinze-staging)
+        uses: hostinger/deploy-on-vps@b0868cec74bfa63af6bfa7bdb0dfee2f9bef13ea # v2
+        with:
+          api-key: ${{ secrets.HOSTINGER_API_KEY }}
+          virtual-machine: ${{ vars.HOSTINGER_VM_ID }}
+          project-name: clube-quinze-staging
+          docker-compose-path: compose.staging.yaml
+          environment-variables: |
+            STAGING_TAG=${{ inputs.tag }}
+            STAGING_DB_ROOT_PASSWORD=${{ secrets.STAGING_DB_ROOT_PASSWORD }}
+            STAGING_DB_PASSWORD=${{ secrets.STAGING_DB_PASSWORD }}
+            STAGING_RABBIT_PASSWORD=${{ secrets.STAGING_RABBIT_PASSWORD }}
+            STAGING_JWT_SECRET=${{ secrets.STAGING_JWT_SECRET }}
+            STAGING_ACCESS_KEY=${{ secrets.STAGING_ACCESS_KEY }}
+            COMPOSE_PROFILES=${{ vars.STAGING_TLS == 'true' && 'tls' || '' }}
+
+      # O teste de fumaça só roda quando o HTTPS público (porta 8443) está habilitado.
+      - name: Teste de fumaça
+        if: vars.STAGING_TLS == 'true'
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+          STAGING_ACCESS_KEY: ${{ secrets.STAGING_ACCESS_KEY }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          # Espera a nova versão subir (a API leva um tempo para iniciar e migrar o banco).
+          for i in $(seq 1 36); do
+            code=$(curl -s -o /dev/null -m 10 -w '%{http_code}' -H "X-Staging-Key: $STAGING_ACCESS_KEY" "$STAGING_URL/actuator/info" || true)
+            if [ "$code" = "200" ]; then echo "Homologação respondendo (tentativa $i)."; break; fi
+            echo "Aguardando a homologação ($i/36) — último status: $code"; sleep 10
+          done
+          bash scripts/staging/smoke.sh "$STAGING_URL" "$STAGING_ACCESS_KEY"

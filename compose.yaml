@@ -57,6 +57,8 @@ services:
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      # Desafio HTTP-01 do certbot (renovação sem parar o nginx). Ver scripts/staging/enable-prod-acme.sh
+      - /var/www/certbot:/var/www/certbot:ro
       - ./uploads:/var/www/uploads:ro
       - ./nginx/policies:/var/www/policies:ro
     restart: unless-stopped
