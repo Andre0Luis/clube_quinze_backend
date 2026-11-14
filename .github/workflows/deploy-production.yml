@@ -1,0 +1,177 @@
+name: Deploy produção
+
+# Produção só sobe por TAG vX.Y.Z criada na main (Gitflow), reaproveitando a MESMA imagem que foi validada na
+# release (X.Y.Z-rc) — nada é reconstruído. O job exige aprovação manual (GitHub Environment "production").
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "deploy = publicar uma versão; baseline = só marcar a imagem :latest atual com uma versão (rollback inicial)"
+        type: choice
+        options: [deploy, baseline]
+        default: deploy
+      version:
+        description: "Versão sem o v (ex.: 1.18.0)"
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PROD_URL: https://clubequinzeapp.cloud
+
+jobs:
+  baseline:
+    name: Marcar imagem atual como versão (baseline)
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'baseline'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Marcar :latest como a versão informada (mesmo digest)
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/clube-quinze-backend"
+          if docker buildx imagetools inspect "$IMAGE:$VERSION" >/dev/null 2>&1; then
+            echo "A imagem $IMAGE:$VERSION já existe; nada a fazer."; exit 0
+          fi
+          docker buildx imagetools create -t "$IMAGE:$VERSION" "$IMAGE:latest"
+          echo "Imagem $IMAGE:latest marcada como $VERSION." >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Promover e publicar
+    if: github.event_name == 'push' || inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production # aprovação manual
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Definir versão
+        id: v
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/clube-quinze-backend" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: refs/tags/v${{ steps.v.outputs.version }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validar tag (está na main e bate com o pom.xml)
+        run: |
+          VERSION="${{ steps.v.outputs.version }}"
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::A tag v$VERSION não está na main. Em produção só entra o que foi para a main."; exit 1
+          fi
+          POM_VERSION=$(python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+          print(ET.parse("pom.xml").getroot().find("m:version", ns).text)
+          PY
+          )
+          if [ "$POM_VERSION" != "$VERSION" ]; then
+            echo "::error::pom.xml está em $POM_VERSION, mas a tag é v$VERSION."; exit 1
+          fi
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promover a imagem validada (X.Y.Z-rc -> X.Y.Z, sem reconstruir)
+        run: |
+          VERSION="${{ steps.v.outputs.version }}"
+          IMAGE="${{ steps.v.outputs.image }}"
+          if docker buildx imagetools inspect "$IMAGE:$VERSION" >/dev/null 2>&1; then
+            echo "Imagem $IMAGE:$VERSION já promovida; reutilizando."
+          else
+            docker pull -q "$IMAGE:$VERSION-rc"
+            REV=$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$IMAGE:$VERSION-rc")
+            [ -n "$REV" ] || { echo "::error::A imagem $VERSION-rc não tem o rótulo de revisão."; exit 1; }
+            git cat-file -e "$REV^{commit}" 2>/dev/null || git fetch --no-tags origin "$REV"
+            # A imagem validada precisa ter sido construída exatamente com o conteúdo que está na main.
+            if ! git diff --quiet "$REV" HEAD -- . ':(exclude).github'; then
+              echo "::error::O código da tag difere do commit validado na release ($REV). Gere um novo candidato pela branch release/$VERSION e valide-o."
+              exit 1
+            fi
+            docker buildx imagetools create -t "$IMAGE:$VERSION" "$IMAGE:$VERSION-rc"
+          fi
+
+      - name: Versão anterior (para rollback)
+        id: prev
+        run: |
+          PREV=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -vx "v${{ steps.v.outputs.version }}" | head -n1 || true)
+          echo "version=${PREV#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy na Hostinger
+        uses: hostinger/deploy-on-vps@b0868cec74bfa63af6bfa7bdb0dfee2f9bef13ea # v2
+        with:
+          api-key: ${{ secrets.HOSTINGER_API_KEY }}
+          virtual-machine: ${{ vars.HOSTINGER_VM_ID }}
+          environment-variables: |
+            IMAGE_TAG=${{ steps.v.outputs.version }}
+
+      - name: Verificar a nova versão no ar
+        id: health
+        run: |
+          VERSION="${{ steps.v.outputs.version }}"
+          for i in $(seq 1 40); do
+            INFO=$(curl -fsS -m 10 "$PROD_URL/actuator/info" 2>/dev/null || true)
+            if echo "$INFO" | grep -q "\"version\":\"$VERSION\""; then
+              CODE=$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$PROD_URL/api/v1/plans" || true)
+              if [ "$CODE" = "200" ]; then
+                echo "Versão $VERSION no ar e respondendo (tentativa $i)."; exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo "::error::A versão $VERSION não respondeu como esperado em $PROD_URL."
+          exit 1
+
+      - name: Rollback para a versão anterior
+        if: failure() && steps.health.outcome == 'failure' && steps.prev.outputs.version != ''
+        uses: hostinger/deploy-on-vps@b0868cec74bfa63af6bfa7bdb0dfee2f9bef13ea # v2
+        with:
+          api-key: ${{ secrets.HOSTINGER_API_KEY }}
+          virtual-machine: ${{ vars.HOSTINGER_VM_ID }}
+          environment-variables: |
+            IMAGE_TAG=${{ steps.prev.outputs.version }}
+
+      - name: Aviso de rollback
+        if: failure() && steps.health.outcome == 'failure'
+        run: |
+          echo "::warning::Deploy da v${{ steps.v.outputs.version }} falhou na verificação. Rollback solicitado para v${{ steps.prev.outputs.version }} (se existir)."
+
+      # :latest passa a significar "o que está rodando em produção".
+      - name: Atualizar :latest
+        if: success()
+        run: |
+          IMAGE="${{ steps.v.outputs.image }}"
+          docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE:${{ steps.v.outputs.version }}"

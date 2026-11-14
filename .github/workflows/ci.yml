@@ -1,0 +1,207 @@
+name: CI
+
+# Gitflow: feature/* -> develop -> release/x.y.z -> main (+ tag vX.Y.Z) ; hotfix/* parte da main.
+# Pull requests rodam todas as verificações; pushes em develop/release/hotfix também geram a imagem Docker.
+on:
+  pull_request:
+    branches: [develop, main, "release/**", "hotfix/**"]
+  push:
+    branches: [develop, "release/**", "hotfix/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Testes + cobertura
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # Suíte completa (H2) com cobertura JaCoCo. Os testes de MariaDB real rodam no job "migrations".
+      - name: Testes (H2) com JaCoCo
+        run: >
+          ./mvnw -B -ntp
+          org.jacoco:jacoco-maven-plugin:0.8.16:prepare-agent
+          verify
+          org.jacoco:jacoco-maven-plugin:0.8.16:report
+          -DexcludedGroups=mariadb
+
+      - name: Resumo de cobertura
+        if: always()
+        run: |
+          if [ -f target/site/jacoco/jacoco.csv ]; then
+            python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import csv
+          missed = covered = 0
+          with open("target/site/jacoco/jacoco.csv") as f:
+              for row in csv.DictReader(f):
+                  missed += int(row["LINE_MISSED"]); covered += int(row["LINE_COVERED"])
+          total = missed + covered
+          pct = (100 * covered / total) if total else 0
+          print(f"### Cobertura de linhas: {pct:.1f}% ({covered}/{total})")
+          PY
+          fi
+
+      - name: Relatórios (testes e cobertura)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: relatorios-testes
+          path: |
+            target/surefire-reports
+            target/site/jacoco
+          retention-days: 14
+          if-no-files-found: ignore
+
+  migrations:
+    name: Migrations (MariaDB real)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # Sobe um MariaDB de verdade (Testcontainers), roda o Flyway V1..Vn e valida as entidades
+      # contra o schema (ddl-auto=validate). É o que os testes em H2 não pegam.
+      - name: Flyway + Hibernate validate no MariaDB
+        run: ./mvnw -B -ntp test -Dgroups=mariadb -Dtest=MariaDbMigrationIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false
+
+  quality:
+    name: Qualidade (SpotBugs, relatório)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Por enquanto só informa; não bloqueia o merge.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: SpotBugs
+        run: ./mvnw -B -ntp -DskipTests compile com.github.spotbugs:spotbugs-maven-plugin:4.10.5.0:spotbugs
+
+      - name: Resumo SpotBugs
+        if: always()
+        run: |
+          if [ -f target/spotbugsXml.xml ]; then
+            n=$(grep -c "<BugInstance " target/spotbugsXml.xml || true)
+            echo "### SpotBugs: ${n} possível(is) problema(s) (somente relatório)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Relatório SpotBugs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: relatorio-spotbugs
+          path: target/spotbugsXml.xml
+          retention-days: 14
+          if-no-files-found: ignore
+
+  image:
+    name: Imagem Docker
+    # Só em push (develop/release/hotfix) e só com testes e migrations verdes.
+    if: github.event_name == 'push'
+    needs: [test, migrations]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Definir tags da imagem
+        id: meta
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/clube-quinze-backend"
+          SHORT="${GITHUB_SHA::7}"
+          POM_VERSION=$(python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+          print(ET.parse("pom.xml").getroot().find("m:version", ns).text)
+          PY
+          )
+          case "$GITHUB_REF_NAME" in
+            develop)
+              TAGS="$IMAGE:develop"$'\n'"$IMAGE:develop-$SHORT"
+              ;;
+            release/*|hotfix/*)
+              BRANCH_VERSION="${GITHUB_REF_NAME#*/}"
+              if [ "$BRANCH_VERSION" != "$POM_VERSION" ]; then
+                echo "::error::A versão do pom.xml ($POM_VERSION) deve ser igual à da branch ($BRANCH_VERSION). Ajuste o pom antes de publicar o candidato."
+                exit 1
+              fi
+              TAGS="$IMAGE:$POM_VERSION-rc"$'\n'"$IMAGE:$POM_VERSION-rc.$SHORT"
+              ;;
+            *)
+              echo "::error::Branch inesperada: $GITHUB_REF_NAME"; exit 1 ;;
+          esac
+          {
+            echo "image=$IMAGE"
+            echo "version=$POM_VERSION"
+            echo "ref_tag=$(echo "$TAGS" | tail -n1)"
+            echo "tags<<EOF"; echo "$TAGS"; echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      # Token automático do GitHub (sem PAT guardado). O pacote precisa dar acesso de escrita a este repositório.
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Por enquanto só relatório; passa a bloquear quando a homologação estiver no ar.
+      - name: Trivy na imagem (HIGH/CRITICAL, relatório)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: ${{ steps.meta.outputs.ref_tag }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"

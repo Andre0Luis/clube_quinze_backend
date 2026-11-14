@@ -1,6 +1,7 @@
 services:
   api:
-    image: ghcr.io/andre0luis/clube-quinze-backend:latest # ajuste para a sua imagem real
+    # IMAGE_TAG é definido pelo pipeline de produção (versão promovida, ex.: 1.18.0); sem ele usa :latest.
+    image: ghcr.io/andre0luis/clube-quinze-backend:${IMAGE_TAG:-latest}
     container_name: clube-quinze-api
     env_file:
       - .env
