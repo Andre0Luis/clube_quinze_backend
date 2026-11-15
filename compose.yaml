@@ -27,6 +27,10 @@ services:
       MAIL_SMTP_STARTTLS: ${MAIL_SMTP_STARTTLS}
       MAIL_SMTP_STARTTLS_REQUIRED: ${MAIL_SMTP_STARTTLS_REQUIRED}
       MAIL_FROM: ${MAIL_FROM}
+      # Google Agenda (OAuth do administrador): passadas pelo workflow de produção (segredos do Environment "production").
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_TOKEN_ENCRYPTION_KEY: ${GOOGLE_TOKEN_ENCRYPTION_KEY:-}
       SPRING_REDIS_HOST: redis
       SPRING_RABBITMQ_HOST: rabbitmq
       # Credencial do Firebase entregue como ARQUIVO montado por volume (determinístico,

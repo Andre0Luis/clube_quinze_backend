@@ -91,6 +91,11 @@ services:
       MEDIA_BASE_URL: https://staging.clubequinzeapp.cloud:8443/uploads
       APP_PUBLIC_BASE_URL: https://staging.clubequinzeapp.cloud:8443
       RESET_BASE_URL: https://staging.clubequinzeapp.cloud:8443/reset-password
+      # Google Agenda (OAuth do administrador). Vêm dos segredos do GitHub Environment "staging".
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_TOKEN_ENCRYPTION_KEY: ${GOOGLE_TOKEN_ENCRYPTION_KEY:-}
+      GOOGLE_NEW_CALENDAR_NAME: Clube Quinze (homologação)
       # Porta de entrada: sem a chave, 404. Links de e-mail e retorno do Google abrem sem chave.
       APP_STAGING_ACCESS_KEY: ${STAGING_ACCESS_KEY:?defina STAGING_ACCESS_KEY}
       APP_STAGING_PUBLIC_PATHS: /appointment-action,/appointment-calendar,/integrations/google/callback
