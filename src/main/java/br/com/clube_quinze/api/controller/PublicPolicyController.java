@@ -33,7 +33,7 @@ public class PublicPolicyController {
 </head>
 <body>
     <h1>Clube Quinze</h1>
-    <p class=\"updated\">Última atualização: 05 de fevereiro de 2026</p>
+    <p class=\"updated\">Última atualização: 14 de novembro de 2026</p>
 
     <h2>Visão Geral</h2>
     <p>Este documento descreve a Política de Privacidade e os Termos de Uso do aplicativo Clube Quinze (\"Aplicativo\"). Ao utilizar nossos serviços, você concorda integralmente com as condições aqui dispostas.</p>
@@ -67,6 +67,17 @@ public class PublicPolicyController {
     <p>Armazenamos arquivos localmente para cache temporário de mídias, comprovantes e outros conteúdos gerados pelo usuário. O armazenamento é usado exclusivamente para facilitar uploads, downloads e funcionamento offline limitado.</p>
     <h3>Notificações Push</h3>
     <p>Coletamos o token de push do dispositivo para enviar alertas de agendamentos, atualizações de conteúdo, mensagens administrativas e ofertas relevantes. Você pode gerenciar as permissões de notificações nas configurações do sistema.</p>
+
+        <h2>Integração com o Google Agenda (opcional)</h2>
+    <p>A administração do Clube Quinze pode, de forma opcional, conectar uma conta Google ao aplicativo para manter os agendamentos do clube sincronizados em uma agenda do Google Agenda. Esta integração é restrita a contas de administradores e nunca é ativada para os demais usuários.</p>
+    <ul>
+        <li><strong>O que acessamos:</strong> a lista de agendas da conta conectada (somente para que o administrador escolha onde os agendamentos serão salvos) e os eventos criados pelo próprio aplicativo na agenda escolhida.</li>
+        <li><strong>O que enviamos ao Google:</strong> para cada agendamento, o título do atendimento, o nome do cliente, a data, o horário, a duração e as observações do agendamento. Esses dados já existem no Clube Quinze e são gravados apenas na agenda que o administrador escolheu.</li>
+        <li><strong>Permissões solicitadas:</strong> criar agendas secundárias, listar as agendas da conta e criar, alterar e excluir eventos. Não lemos e-mails, contatos, arquivos nem outros dados da conta Google.</li>
+        <li><strong>Armazenamento e segurança:</strong> as credenciais de acesso (tokens) são armazenadas criptografadas e usadas apenas para sincronizar a agenda do clube.</li>
+        <li><strong>Desconexão:</strong> o administrador pode desconectar a conta a qualquer momento nas configurações do aplicativo ou em myaccount.google.com/permissions. Ao desconectar, apagamos as credenciais. Eventos já criados permanecem na agenda do Google e podem ser removidos pelo próprio titular da conta.</li>
+    </ul>
+    <p>O uso e a transferência, para qualquer outro aplicativo, das informações recebidas das APIs do Google obedecerão à <a href="https://developers.google.com/terms/api-services-user-data-policy">Política de Dados do Usuário dos Serviços de API do Google</a>, incluindo os requisitos de Uso Limitado. Não vendemos esses dados, não os usamos para publicidade nem os transferimos a terceiros, exceto quando necessário para operar a sincronização, cumprir a lei ou com o consentimento do titular, e nenhuma pessoa lê esses dados, exceto se necessário para suporte, segurança ou obrigação legal.</p>
 
     <h2>Compartilhamento de Dados</h2>
     <ul>
