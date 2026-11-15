@@ -1,6 +1,6 @@
 package br.com.clube_quinze.api.service.google;
 
-import java.nio.ByteBuffer;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
@@ -31,7 +31,11 @@ public class TokenCipher {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, key(), new GCMParameterSpec(TAG_BITS, iv));
             byte[] encrypted = cipher.doFinal(plain.getBytes(StandardCharsets.UTF_8));
-            return Base64.getEncoder().encodeToString(ByteBuffer.allocate(iv.length + encrypted.length).put(iv).put(encrypted).array());
+            // Concatena sem aritmética de tamanhos (iv + cifrado): o tamanho do segredo é controlado por quem o fornece.
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            out.writeBytes(iv);
+            out.writeBytes(encrypted);
+            return Base64.getEncoder().encodeToString(out.toByteArray());
         } catch (GeneralSecurityException ex) {
             throw new IllegalStateException("Falha ao criptografar o token", ex);
         }
@@ -40,6 +44,9 @@ public class TokenCipher {
     public String decrypt(String stored) {
         try {
             byte[] all = Base64.getDecoder().decode(stored);
+            if (all.length <= IV_BYTES + TAG_BITS / 8) {
+                throw new IllegalStateException("Token criptografado inválido (curto demais)");
+            }
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(TAG_BITS, all, 0, IV_BYTES));
             return new String(cipher.doFinal(all, IV_BYTES, all.length - IV_BYTES), StandardCharsets.UTF_8);
