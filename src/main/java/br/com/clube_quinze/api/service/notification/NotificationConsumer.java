@@ -15,11 +15,14 @@ public class NotificationConsumer {
 
     private final NotificationService notificationService;
     private final PushNotificationService pushNotificationService;
+    private final br.com.clube_quinze.api.service.google.GoogleCalendarService googleCalendarService;
 
     public NotificationConsumer(NotificationService notificationService,
-                                PushNotificationService pushNotificationService) {
+                                PushNotificationService pushNotificationService,
+                                br.com.clube_quinze.api.service.google.GoogleCalendarService googleCalendarService) {
         this.notificationService = notificationService;
         this.pushNotificationService = pushNotificationService;
+        this.googleCalendarService = googleCalendarService;
     }
 
     @RabbitListener(queues = RabbitMQConfig.NOTIFICATION_QUEUE)
@@ -45,6 +48,9 @@ public class NotificationConsumer {
                     break;
                 case "APPOINTMENT_RESCHEDULED_EMAIL":
                     handleAppointmentRescheduledEmail(message.getData());
+                    break;
+                case "GOOGLE_CALENDAR_SYNC":
+                    googleCalendarService.syncAppointment(getLong(message.getData(), "appointmentId"));
                     break;
                 case "PUSH_MESSAGE":
                 case "APPOINTMENT_REMINDER_PUSH":

@@ -61,6 +61,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/appointment-action").permitAll()
                         .requestMatchers(HttpMethod.POST, "/appointment-action").permitAll()
                         .requestMatchers(HttpMethod.GET, "/appointment-calendar").permitAll()
+                        // Retorno do login do Google: protegido pelo "state" assinado, não por JWT.
+                        .requestMatchers(HttpMethod.GET, "/integrations/google/callback").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/public/policies/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/plans", "/api/v1/plans/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/community/**").permitAll()

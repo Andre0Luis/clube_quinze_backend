@@ -75,6 +75,14 @@ public class Appointment {
     @Column(name = "proposed_at")
     private LocalDateTime proposedAt;
 
+    /** Id do evento correspondente na agenda do Google (nulo se ainda não sincronizado). */
+    @Column(name = "google_event_id")
+    private String googleEventId;
+
+    /** Valor de updatedAt já refletido no Google. Atualizado por query (sem mexer em updatedAt) para não gerar laço. */
+    @Column(name = "google_synced_for")
+    private LocalDateTime googleSyncedFor;
+
     @PrePersist
     void prePersist() {
         LocalDateTime now = LocalDateTime.now();
@@ -197,5 +205,21 @@ public class Appointment {
 
     public void setProposedAt(LocalDateTime proposedAt) {
         this.proposedAt = proposedAt;
+    }
+
+    public String getGoogleEventId() {
+        return googleEventId;
+    }
+
+    public void setGoogleEventId(String googleEventId) {
+        this.googleEventId = googleEventId;
+    }
+
+    public LocalDateTime getGoogleSyncedFor() {
+        return googleSyncedFor;
+    }
+
+    public void setGoogleSyncedFor(LocalDateTime googleSyncedFor) {
+        this.googleSyncedFor = googleSyncedFor;
     }
 }

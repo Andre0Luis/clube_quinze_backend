@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="robots" content="noindex, nofollow"/>
+  <title>Clube Quinze — Google Agenda</title>
+  <style>
+    body { margin:0; padding:16px; background:#f3f5f8; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+    .wrap { max-width:480px; margin:24px auto; background:#fff; border-radius:12px; border:1px solid #e4e7ec; overflow:hidden; }
+    .header { background:#00053d; padding:20px 24px; text-align:center; }
+    .header img { height:42px; width:auto; border:0; }
+    .body { padding:24px; }
+    h1 { margin:0 0 12px; font-size:20px; color:#101828; }
+    .ok { color:#067647; } .erro { color:#b42318; }
+    p { margin:0 0 16px; color:#344054; line-height:1.6; font-size:15px; }
+    a.btn { display:block; text-align:center; text-decoration:none; border-radius:10px; padding:14px 16px; font-size:16px; font-weight:600; background:#00053d; color:#fff; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header"><img src="/assets/logo-email.png" alt="Clube Quinze"/></div>
+  <div class="body">
+    <h1 th:class="${success} ? 'ok' : 'erro'" th:text="${success} ? 'Google Agenda conectado' : 'Não foi possível conectar'">Resultado</h1>
+    <p th:text="${message}">Mensagem</p>
+    <p th:if="${googleEmail != null}">Conta: <strong th:text="${googleEmail}">conta@gmail.com</strong></p>
+    <a class="btn" th:href="${returnUrl}">Voltar ao aplicativo</a>
+  </div>
+</div>
+</body>
+</html>

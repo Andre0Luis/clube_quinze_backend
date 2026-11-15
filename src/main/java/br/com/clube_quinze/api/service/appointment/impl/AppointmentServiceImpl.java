@@ -18,6 +18,7 @@ import br.com.clube_quinze.api.model.enumeration.RoleType;
 import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.service.appointment.AppointmentCalendarService;
+import br.com.clube_quinze.api.service.google.GoogleCalendarSyncTrigger;
 import br.com.clube_quinze.api.service.appointment.AppointmentScheduleSettings;
 import br.com.clube_quinze.api.service.appointment.AppointmentService;
 import br.com.clube_quinze.api.config.RabbitMQConfig;
@@ -61,14 +62,17 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final RabbitTemplate rabbitTemplate;
     private final Clock clock;
     private final AppointmentCalendarService calendarService;
+    private final GoogleCalendarSyncTrigger googleSync;
 
     public AppointmentServiceImpl(AppointmentRepository appointmentRepository, UserRepository userRepository, Clock clock,
-            RabbitTemplate rabbitTemplate, AppointmentCalendarService calendarService) {
+            RabbitTemplate rabbitTemplate, AppointmentCalendarService calendarService,
+            GoogleCalendarSyncTrigger googleSync) {
         this.appointmentRepository = appointmentRepository;
         this.userRepository = userRepository;
         this.clock = clock;
         this.rabbitTemplate = rabbitTemplate;
         this.calendarService = calendarService;
+        this.googleSync = googleSync;
     }
 
     @Override
@@ -153,6 +157,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
 
         Appointment saved = createSingleAppointment(client, request, request.scheduledAt(), duration, null, null);
+        googleSync.requestSync(saved.getId());
         sendSchedulePush(saved);
         return toAppointmentResponse(saved);
     }
@@ -186,6 +191,7 @@ public class AppointmentServiceImpl implements AppointmentService {
                 // Ensure slot is available before attempting to create
                 ensureSlotAvailable(current, duration, null);
                 Appointment saved = createSingleAppointment(client, request, current, duration, groupId, period);
+                googleSync.requestSync(saved.getId());
                 if (firstAppointment == null) {
                     firstAppointment = saved;
                     sendSchedulePush(saved); // Only push for the first one to avoid spam
@@ -281,6 +287,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.setProposedAt(null);
 
         Appointment updated = appointmentRepository.save(appointment);
+        googleSync.requestSync(updated.getId());
 
         // best-effort push + email notification
         User client = updated.getClient();
@@ -340,6 +347,7 @@ public class AppointmentServiceImpl implements AppointmentService {
             appointment.setNotes(request.notes());
         }
         Appointment updated = appointmentRepository.save(appointment);
+        googleSync.requestSync(updated.getId());
         // notify key status transitions
         try {
             if (request.status() == AppointmentStatus.CANCELED) {
@@ -384,6 +392,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.setStatus(AppointmentStatus.CANCELED);
         appointment.setProposedAt(null);
         Appointment saved = appointmentRepository.save(appointment);
+        googleSync.requestSync(saved.getId());
 
         String when = saved.getScheduledAt().format(PT_BR_FORMATTER);
         Map<String, Object> data = appointmentData(saved, "appointment_canceled");
@@ -434,6 +443,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.setStatus(AppointmentStatus.CONFIRMED);
         appointment.setConfirmedAt(LocalDateTime.now(clock));
         Appointment saved = appointmentRepository.save(appointment);
+        googleSync.requestSync(saved.getId());
 
         String when = saved.getScheduledAt().format(PT_BR_FORMATTER);
         if (byClient) {
@@ -473,6 +483,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.setStatus(AppointmentStatus.RESCHEDULE_REQUESTED);
         appointment.setProposedAt(request.newDate());
         Appointment saved = appointmentRepository.save(appointment);
+        googleSync.requestSync(saved.getId());
 
         String oldFmt = oldAt.format(PT_BR_FORMATTER);
         String newFmt = request.newDate().format(PT_BR_FORMATTER);
@@ -528,6 +539,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.setStatus(AppointmentStatus.CONFIRMED);
         appointment.setConfirmedAt(LocalDateTime.now(clock));
         Appointment saved = appointmentRepository.save(appointment);
+        googleSync.requestSync(saved.getId());
 
         String newFmt = target.format(PT_BR_FORMATTER);
         pushToUser(saved.getClient().getId(), "RESCHEDULED", "Remarcação aprovada",
@@ -549,6 +561,7 @@ public class AppointmentServiceImpl implements AppointmentService {
                 ? AppointmentStatus.CONFIRMED
                 : AppointmentStatus.SCHEDULED);
         Appointment saved = appointmentRepository.save(appointment);
+        googleSync.requestSync(saved.getId());
 
         StringBuilder body = new StringBuilder("O clube não pôde remarcar. Seu agendamento segue em ")
                 .append(saved.getScheduledAt().format(PT_BR_FORMATTER)).append(".");

@@ -50,6 +50,9 @@ jobs:
             STAGING_RABBIT_PASSWORD=${{ secrets.STAGING_RABBIT_PASSWORD }}
             STAGING_JWT_SECRET=${{ secrets.STAGING_JWT_SECRET }}
             STAGING_ACCESS_KEY=${{ secrets.STAGING_ACCESS_KEY }}
+            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+            GOOGLE_TOKEN_ENCRYPTION_KEY=${{ secrets.GOOGLE_TOKEN_ENCRYPTION_KEY }}
             COMPOSE_PROFILES=${{ vars.STAGING_TLS == 'true' && 'tls' || '' }}
 
       # O teste de fumaça só roda quando o HTTPS público (porta 8443) está habilitado.
