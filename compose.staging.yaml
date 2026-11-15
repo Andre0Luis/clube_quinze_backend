@@ -70,6 +70,7 @@ services:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: staging
+      APP_BUILD: ${STAGING_TAG:-develop}
       DATABASE_HOST: db
       DATABASE_PORT: "3306"
       DATABASE_URL: jdbc:mariadb://db:3306/clube_quinze

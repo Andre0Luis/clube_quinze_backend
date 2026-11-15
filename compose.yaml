@@ -31,6 +31,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_TOKEN_ENCRYPTION_KEY: ${GOOGLE_TOKEN_ENCRYPTION_KEY:-}
+      APP_BUILD: ${IMAGE_TAG:-latest}
       SPRING_REDIS_HOST: redis
       SPRING_RABBITMQ_HOST: rabbitmq
       # Credencial do Firebase entregue como ARQUIVO montado por volume (determinístico,

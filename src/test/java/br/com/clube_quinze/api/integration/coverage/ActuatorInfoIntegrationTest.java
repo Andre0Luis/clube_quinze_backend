@@ -22,5 +22,7 @@ class ActuatorInfoIntegrationTest extends AbstractIntegrationTest {
         Map<String, Object> app = (Map<String, Object>) response.getBody().get("app");
         assertThat(app).isNotNull();
         assertThat(String.valueOf(app.get("version"))).matches("\\d+\\.\\d+\\.\\d+.*");
+        // Sem APP_BUILD (testes e desenvolvimento) a build aparece como "unknown"; no deploy vira a tag da imagem.
+        assertThat(String.valueOf(app.get("build"))).isEqualTo("unknown");
     }
 }

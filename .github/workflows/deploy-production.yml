@@ -147,7 +147,8 @@ jobs:
           VERSION="${{ steps.v.outputs.version }}"
           for i in $(seq 1 40); do
             INFO=$(curl -fsS -m 10 "$PROD_URL/actuator/info" 2>/dev/null || true)
-            if echo "$INFO" | grep -q "\"version\":\"$VERSION\""; then
+            BUILD=$(echo "$INFO" | jq -r '.app.build // empty' 2>/dev/null || true)
+            if echo "$INFO" | grep -q "\"version\":\"$VERSION\"" && [ "$BUILD" = "$VERSION" ]; then
               CODE=$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$PROD_URL/api/v1/plans" || true)
               if [ "$CODE" = "200" ]; then
                 echo "Versão $VERSION no ar e respondendo (tentativa $i)."; exit 0
