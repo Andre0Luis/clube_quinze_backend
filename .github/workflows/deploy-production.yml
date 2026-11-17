@@ -1,19 +1,20 @@
 name: Deploy produção
 
-# Produção só sobe por TAG vX.Y.Z criada na main (Gitflow), reaproveitando a MESMA imagem que foi validada na
-# release (X.Y.Z-rc) — nada é reconstruído. O job exige aprovação manual (GitHub Environment "production").
+# Produção só sobe por TAG vX.Y.Z criada na main (Gitflow), reaproveitando a MESMA imagem que foi validada na release
+# (X.Y.Z-rc) — nada é reconstruído. O job exige aprovação manual (GitHub Environment "production").
+# A tag segue a versão do backend (pom.xml) e, a cada publicação bem-sucedida, o workflow cria a Release no GitHub.
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
   workflow_dispatch:
     inputs:
       action:
-        description: "deploy = publicar uma versão; baseline = só marcar a imagem :latest atual com uma versão (rollback inicial)"
+        description: "deploy = publicar uma versão | baseline = marcar a imagem :latest atual com uma versão | set-latest = apontar :latest para uma versão"
         type: choice
-        options: [deploy, baseline]
+        options: [deploy, baseline, set-latest]
         default: deploy
       version:
-        description: "Versão sem o v (ex.: 1.18.0)"
+        description: "Versão sem o v (ex.: 1.18.1)"
         required: true
         type: string
 
@@ -26,6 +27,8 @@ permissions:
 
 env:
   PROD_URL: https://clubequinzeapp.cloud
+  # Versão que já estava em produção antes do primeiro release por tag (existe como imagem). Serve para o rollback do 1º deploy.
+  FALLBACK_PREVIOUS_VERSION: "1.17.0"
 
 jobs:
   baseline:
@@ -54,14 +57,37 @@ jobs:
           docker buildx imagetools create -t "$IMAGE:$VERSION" "$IMAGE:latest"
           echo "Imagem $IMAGE:latest marcada como $VERSION." >> "$GITHUB_STEP_SUMMARY"
 
+  set-latest:
+    name: Apontar :latest para uma versão
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'set-latest'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Apontar :latest
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/clube-quinze-backend"
+          docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE:$VERSION"
+          echo "$IMAGE:latest agora aponta para $VERSION." >> "$GITHUB_STEP_SUMMARY"
+
   deploy:
     name: Promover e publicar
     if: github.event_name == 'push' || inputs.action == 'deploy'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     environment: production # aprovação manual
     permissions:
-      contents: read
+      contents: write # criar a Release no GitHub depois do deploy
       packages: write
     steps:
       - name: Definir versão
@@ -98,6 +124,23 @@ jobs:
             echo "::error::pom.xml está em $POM_VERSION, mas a tag é v$VERSION."; exit 1
           fi
 
+      # A ação da Hostinger REESCREVE o .env do projeto na VPS a cada deploy (com as variáveis informadas, ou com o
+      # .env.example em branco se nenhuma for informada). Por isso TODAS as variáveis de produção vêm do segredo PROD_ENV e
+      # este passo barra o deploy se ele estiver vazio ou incompleto — foi o que derrubou a produção no release 1.18.0.
+      - name: Conferir as variáveis de produção (PROD_ENV)
+        env:
+          PROD_ENV: ${{ secrets.PROD_ENV }}
+        run: |
+          for key in DATABASE_URL DATABASE_USERNAME DATABASE_PASSWORD JWT_SECRET MAIL_HOST SPRING_PROFILES_ACTIVE; do
+            if ! grep -q "^${key}=." <<<"$PROD_ENV"; then
+              echo "::error::O segredo PROD_ENV está vazio ou sem $key. Deploy bloqueado para não apagar o .env da produção."; exit 1
+            fi
+          done
+          if grep -q "^IMAGE_TAG=" <<<"$PROD_ENV"; then
+            echo "::error::PROD_ENV não pode conter IMAGE_TAG (ele é definido por este workflow)."; exit 1
+          fi
+          echo "PROD_ENV ok ($(grep -c '=' <<<"$PROD_ENV") variáveis)."
+
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
@@ -119,12 +162,12 @@ jobs:
             git cat-file -e "$REV^{commit}" 2>/dev/null || git fetch --no-tags origin "$REV"
             # A imagem validada precisa ter sido construída exatamente com o conteúdo que está na main.
             if ! git diff --quiet "$REV" HEAD -- . ':(exclude).github'; then
-              echo "::error::O código da tag difere do commit validado na release ($REV). Gere um novo candidato pela branch release/$VERSION e valide-o."
+              echo "::error::O código da tag difere do commit validado na release ($REV). Gere um novo candidato pela branch release/$VERSION (ou hotfix/$VERSION) e valide-o."
               exit 1
             fi
             docker buildx imagetools create -t "$IMAGE:$VERSION" "$IMAGE:$VERSION-rc"
           fi
-          # Build (sha curto) que a aplicação deve informar em /actuator/info depois do deploy.
+          # Build (sha curto) que a aplicação deve informar em /health depois do deploy.
           docker pull -q "$IMAGE:$VERSION"
           REV=$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$IMAGE:$VERSION")
           echo "build=${REV:0:7}" >> "$GITHUB_OUTPUT"
@@ -133,54 +176,87 @@ jobs:
         id: prev
         run: |
           PREV=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -vx "v${{ steps.v.outputs.version }}" | head -n1 || true)
-          echo "version=${PREV#v}" >> "$GITHUB_OUTPUT"
+          PREV="${PREV#v}"
+          echo "version=${PREV:-$FALLBACK_PREVIOUS_VERSION}" >> "$GITHUB_OUTPUT"
 
-      # A produção usa a imagem :latest (compose.yaml). NÃO passamos "environment-variables" à ação da Hostinger: ela
-      # SUBSTITUI o .env inteiro do projeto (banco, JWT, e-mail) pelas variáveis informadas. Por isso a versão é ativada
-      # movendo o ponteiro :latest para a imagem validada; o rollback move o ponteiro de volta.
-      - name: Ativar a versão (:latest -> X.Y.Z)
-        run: |
-          IMAGE="${{ steps.v.outputs.image }}"
-          docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE:${{ steps.v.outputs.version }}"
-
+      # Cada versão sobe com TAG PRÓPRIA de imagem (IMAGE_TAG): a VPS é obrigada a baixá-la. Mover ":latest" não adianta, pois
+      # a VPS reaproveita a imagem que já tem em cache com esse nome.
       - name: Deploy na Hostinger
         uses: hostinger/deploy-on-vps@b0868cec74bfa63af6bfa7bdb0dfee2f9bef13ea # v2
         with:
           api-key: ${{ secrets.HOSTINGER_API_KEY }}
           virtual-machine: ${{ vars.HOSTINGER_VM_ID }}
+          environment-variables: |
+            ${{ secrets.PROD_ENV }}
+            IMAGE_TAG=${{ steps.v.outputs.version }}
 
-      - name: Verificar a nova versão no ar
+      # A API leva alguns minutos para subir na VPS (1 CPU compartilhada): espera até 12 min pela build certa.
+      - name: Verificar a nova versão no ar (/health)
         id: health
         run: |
           VERSION="${{ steps.v.outputs.version }}"
-          for i in $(seq 1 40); do
-            INFO=$(curl -fsS -m 10 "$PROD_URL/actuator/info" 2>/dev/null || true)
-            BUILD=$(echo "$INFO" | jq -r '.app.build // empty' 2>/dev/null || true)
-            if echo "$INFO" | grep -q "\"version\":\"$VERSION\"" && [ "$BUILD" = "${{ steps.promote.outputs.build }}" ]; then
+          BUILD="${{ steps.promote.outputs.build }}"
+          for i in $(seq 1 72); do
+            BODY=$(curl -s -m 10 "$PROD_URL/health" || true)
+            V=$(echo "$BODY" | jq -r '.version // empty' 2>/dev/null || true)
+            B=$(echo "$BODY" | jq -r '.build // empty' 2>/dev/null || true)
+            DB=$(echo "$BODY" | jq -r '.checks.database.status // empty' 2>/dev/null || true)
+            if [ "$V" = "$VERSION" ] && [ "$B" = "$BUILD" ] && [ "$DB" = "UP" ]; then
               CODE=$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$PROD_URL/api/v1/plans" || true)
               if [ "$CODE" = "200" ]; then
-                echo "Versão $VERSION no ar e respondendo (tentativa $i)."; exit 0
+                echo "Versão $VERSION (build $BUILD) no ar, banco UP e API respondendo (tentativa $i)."
+                echo "$BODY" | jq . >> "$GITHUB_STEP_SUMMARY" || true
+                exit 0
               fi
             fi
+            echo "Aguardando ($i/72) — no ar: versão=${V:-?} build=${B:-?} banco=${DB:-?}"
             sleep 10
           done
-          echo "::error::A versão $VERSION não respondeu como esperado em $PROD_URL."
+          echo "::error::A versão $VERSION (build $BUILD) não ficou saudável em $PROD_URL."
           exit 1
 
-      - name: Rollback — devolver :latest à versão anterior
-        if: failure() && steps.health.outcome == 'failure' && steps.prev.outputs.version != ''
-        run: |
-          IMAGE="${{ steps.v.outputs.image }}"
-          docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE:${{ steps.prev.outputs.version }}"
-
       - name: Rollback — refazer o deploy com a versão anterior
-        if: failure() && steps.health.outcome == 'failure' && steps.prev.outputs.version != ''
+        if: failure() && steps.health.outcome == 'failure'
         uses: hostinger/deploy-on-vps@b0868cec74bfa63af6bfa7bdb0dfee2f9bef13ea # v2
         with:
           api-key: ${{ secrets.HOSTINGER_API_KEY }}
           virtual-machine: ${{ vars.HOSTINGER_VM_ID }}
+          environment-variables: |
+            ${{ secrets.PROD_ENV }}
+            IMAGE_TAG=${{ steps.prev.outputs.version }}
+
+      - name: Rollback — conferir que a versão anterior voltou
+        if: failure() && steps.health.outcome == 'failure'
+        run: |
+          for _ in $(seq 1 72); do
+            CODE=$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$PROD_URL/api/v1/plans" || true)
+            if [ "$CODE" = "200" ]; then echo "Versão anterior (${{ steps.prev.outputs.version }}) respondendo."; exit 0; fi
+            sleep 10
+          done
+          echo "::warning::A versão anterior não respondeu 200 em 12 min. Verifique a VPS."
 
       - name: Aviso de rollback
         if: failure() && steps.health.outcome == 'failure'
         run: |
-          echo "::warning::Deploy da v${{ steps.v.outputs.version }} falhou na verificação. Rollback solicitado para v${{ steps.prev.outputs.version }} (se existir)."
+          echo "::warning::Deploy da v${{ steps.v.outputs.version }} falhou na verificação. Rollback feito para a v${{ steps.prev.outputs.version }}."
+
+      # Só depois de a versão estar saudável em produção: Release no GitHub com as mudanças desde a versão anterior.
+      - name: Registrar a Release no GitHub
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.v.outputs.version }}"
+          TAG="v$VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "A Release $TAG já existe."; exit 0
+          fi
+          PREV_TAG=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -vx "$TAG" | head -n1 || true)
+          NOTES="Backend **$VERSION** publicado em produção em $(date -u '+%d/%m/%Y %H:%M') UTC.
+
+          - Imagem: \`${{ steps.v.outputs.image }}:$VERSION\` (build \`${{ steps.promote.outputs.build }}\`)
+          - Saúde: $PROD_URL/health
+          - Validada na homologação como \`$VERSION-rc\` antes de subir."
+          args=(--verify-tag --title "Backend $VERSION" --latest --notes "$NOTES" --generate-notes)
+          if [ -n "$PREV_TAG" ]; then args+=(--notes-start-tag "$PREV_TAG"); fi
+          gh release create "$TAG" "${args[@]}"
