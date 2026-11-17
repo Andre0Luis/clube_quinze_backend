@@ -56,6 +56,9 @@ public class SecurityConfig {
                 "/api/v1/auth/**")
                         .permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/info").permitAll()
+                        // /health público (GET e HEAD: monitores de uptime costumam usar HEAD).
+                        .requestMatchers(HttpMethod.GET, "/health").permitAll()
+                        .requestMatchers(HttpMethod.HEAD, "/health").permitAll()
                         .requestMatchers(HttpMethod.GET, "/reset-password").permitAll()
                         // Botões do e-mail de confirmação: protegidos por token assinado, não por JWT.
                         .requestMatchers(HttpMethod.GET, "/appointment-action").permitAll()
