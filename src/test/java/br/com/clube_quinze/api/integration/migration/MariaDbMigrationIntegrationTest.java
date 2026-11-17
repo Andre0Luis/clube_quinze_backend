@@ -184,4 +184,21 @@ class MariaDbMigrationIntegrationTest extends AbstractIntegrationTest {
         tx.executeWithoutResult(status -> appointmentRepository.resetGoogleSync());
         assertThat(appointmentRepository.findById(appointmentId).orElseThrow().getGoogleEventId()).isNull();
     }
+
+    @Test
+    @DisplayName("Migration V18: o fluxo de confirmação começa desligado e o admin consegue ligá-lo")
+    void confirmacaoComecaDesligadaEAdminLiga() {
+        String adminToken = adminToken();
+
+        ResponseEntity<Map> initial = get("/api/v1/admin/settings/appointments", adminToken, Map.class);
+        assertThat(initial.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(initial.getBody().get("enabled")).isEqualTo(false);
+        assertThat(initial.getBody().get("confirmationRequestOffset")).isEqualTo(90);
+
+        Map<String, Object> on = new java.util.HashMap<>(initial.getBody());
+        on.put("enabled", true);
+        ResponseEntity<Map> updated = put("/api/v1/admin/settings/appointments", on, adminToken, Map.class);
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(updated.getBody().get("enabled")).isEqualTo(true);
+    }
 }

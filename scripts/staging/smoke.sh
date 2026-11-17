@@ -81,6 +81,13 @@ expect 200 "login admin"
 ADMIN_TOKEN="$(field '.accessToken // empty')"
 [ -n "$ADMIN_TOKEN" ] || fail "sem accessToken do admin"
 
+step "Garantir a confirmação ligada (em produção ela começa desligada; na homologação testamos ligada)"
+api GET /api/v1/admin/settings/appointments "$ADMIN_TOKEN"; expect 200 "GET configurações da confirmação"
+if [ "$(field '.enabled')" != "true" ]; then
+  api PUT /api/v1/admin/settings/appointments "$ADMIN_TOKEN" "$(jq -c '.enabled = true' "$BODY_FILE")"
+  expect 200 "liga a confirmação na homologação"
+fi
+
 step "Cadastro de um cliente de teste"
 email="smoke_$(date +%s)_$RANDOM@teste.local"
 api POST /api/v1/auth/register "" "{\"name\":\"Cliente Smoke\",\"email\":\"$email\",\"password\":\"Senha@1234\",\"membershipTier\":\"QUINZE_STANDARD\"}"
