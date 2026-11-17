@@ -24,6 +24,26 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
+    @Query("select a from Appointment a join fetch a.client where a.status in :statuses "
+            + "and a.scheduledAt between :start and :end")
+    List<Appointment> findByStatusInAndBetween(
+            @Param("statuses") java.util.Collection<AppointmentStatus> statuses,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
+    @Query("""
+            select a
+            from Appointment a
+            join fetch a.client c
+            where a.status in :statuses
+            and a.scheduledAt >= :from
+            order by a.scheduledAt asc
+            """)
+    List<Appointment> findUpcomingByStatusIn(
+            @Param("statuses") java.util.Collection<AppointmentStatus> statuses,
+            @Param("from") LocalDateTime from,
+            Pageable pageable);
+
         @Query("""
             select a
             from Appointment a
@@ -36,6 +56,26 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
             @Param("status") AppointmentStatus status,
             @Param("from") LocalDateTime from,
             Pageable pageable);
+
+    /**
+     * Grava o vínculo com o Google por query: não passa pelos callbacks da entidade, então updatedAt não muda
+     * (senão o agendamento pareceria "alterado" e seria sincronizado de novo, em laço).
+     */
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Appointment a set a.googleEventId = :eventId, a.googleSyncedFor = :syncedFor where a.id = :id")
+    int markGoogleSynced(@Param("id") Long id, @Param("eventId") String eventId,
+                         @Param("syncedFor") LocalDateTime syncedFor);
+
+    /** Agendamentos recentes/futuros ainda não refletidos no Google (nunca sincronizados ou alterados depois). */
+    @Query("select a from Appointment a join fetch a.client where a.scheduledAt >= :from "
+            + "and (a.googleSyncedFor is null or a.updatedAt > a.googleSyncedFor) order by a.scheduledAt asc")
+    List<Appointment> findNeedingGoogleSync(@Param("from") LocalDateTime from, Pageable pageable);
+
+    /** Esquece o vínculo com o Google (conta ou agenda nova, ou desconexão): tudo volta a ser "não sincronizado". */
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Appointment a set a.googleEventId = null, a.googleSyncedFor = null "
+            + "where a.googleEventId is not null or a.googleSyncedFor is not null")
+    int resetGoogleSync();
 
     boolean existsByScheduledAt(LocalDateTime scheduledAt);
 

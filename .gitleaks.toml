@@ -1,0 +1,11 @@
+# Configuração do Gitleaks (CI). Estende as regras padrão.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fixtures de teste e exemplos de configuração (sem segredos reais)"
+paths = [
+  '''src/test/''',
+  '''\.env\.example$''',
+  '''secrets/README\.md$''',
+]

@@ -62,8 +62,9 @@ public class AdminDashboardService {
                 monthEndExclusive);
 
         List<UpcomingAppointmentCard> upcomingAppointments = appointmentRepository
-                .findUpcomingByStatus(
-                        AppointmentStatus.SCHEDULED,
+                .findUpcomingByStatusIn(
+                        List.of(AppointmentStatus.SCHEDULED, AppointmentStatus.CONFIRMED,
+                                AppointmentStatus.RESCHEDULE_REQUESTED),
                         now,
                         PageRequest.of(0, safeAppointmentsLimit))
                 .stream()

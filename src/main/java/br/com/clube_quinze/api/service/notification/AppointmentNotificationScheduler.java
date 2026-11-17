@@ -2,6 +2,7 @@ package br.com.clube_quinze.api.service.notification;
 
 import br.com.clube_quinze.api.config.RabbitMQConfig;
 import br.com.clube_quinze.api.dto.notification.NotificationMessageDTO;
+import br.com.clube_quinze.api.dto.settings.AppointmentConfirmationSettings;
 import br.com.clube_quinze.api.model.appointment.Appointment;
 import br.com.clube_quinze.api.model.enumeration.AppointmentStatus;
 import br.com.clube_quinze.api.model.enumeration.RoleType;
@@ -11,7 +12,12 @@ import br.com.clube_quinze.api.repository.AppointmentReminderLogRepository;
 import br.com.clube_quinze.api.repository.AppointmentRepository;
 import br.com.clube_quinze.api.repository.UserRepository;
 import br.com.clube_quinze.api.config.AppConfig;
+import br.com.clube_quinze.api.service.appointment.AppointmentActionTokenService;
+import br.com.clube_quinze.api.service.appointment.AppointmentCalendarService;
+import br.com.clube_quinze.api.service.appointment.AppointmentActionTokenService.Action;
 import br.com.clube_quinze.api.service.settings.SettingsService;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
@@ -21,6 +27,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -34,38 +41,48 @@ public class AppointmentNotificationScheduler {
     private static final DateTimeFormatter PT_BR_FORMATTER =
             DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm", new Locale("pt", "BR"));
 
+    /** Tipos de destinatário gravados no log de idempotência (coluna com limite de 20 caracteres). */
+    static final String RECIPIENT_CLIENT = "CLIENT";
+    static final String RECIPIENT_CLIENT_CONFIRM = "CLIENT_CONFIRM";
+    static final String RECIPIENT_ADMIN = "ADMIN";
+    static final String RECIPIENT_ADMIN_UNCONFIRMED = "ADMIN_UNCONFIRMED";
+
+    /** Agendamentos que ainda vão acontecer e, portanto, recebem lembretes. */
+    private static final List<AppointmentStatus> REMINDABLE_STATUSES = List.of(
+            AppointmentStatus.SCHEDULED, AppointmentStatus.CONFIRMED, AppointmentStatus.RESCHEDULE_REQUESTED);
+
+    // Catch-up: tolera ticks perdidos (deploy/restart/VPS lento) sem perder o lembrete.
+    // Maior que a janela de 1 min original; combinado com o log de idempotência, nunca duplica.
+    private static final int GRACE_MINUTES = 10;
+
     private final AppointmentRepository appointmentRepository;
     private final AppointmentReminderLogRepository reminderLogRepository;
     private final RabbitTemplate rabbitTemplate;
     private final UserRepository userRepository;
     private final SettingsService settingsService;
-
-    // Reminder config: offset in minutes and user-friendly label
-    private static final int[][] REMINDER_OFFSETS = {
-            {24 * 60, 0},  // 24h
-            {3 * 60, 1},   // 3h
-            {60, 2},       // 1h
-            {30, 3}        // 30min
-    };
-    private static final String[] OFFSET_LABELS = {
-            "amanhã", "em 3 horas", "em 1 hora", "em 30 minutos"
-    };
-
-    // Catch-up: tolera ticks perdidos (deploy/restart/VPS lento) sem perder o lembrete.
-    // Maior que a janela de 1 min original; combinado com o log de idempotência, nunca duplica.
-    private static final int GRACE_MINUTES = 10;
+    private final AppointmentActionTokenService tokenService;
+    private final AppointmentCalendarService calendarService;
+    private final String publicBaseUrl;
 
     public AppointmentNotificationScheduler(
             AppointmentRepository appointmentRepository,
             AppointmentReminderLogRepository reminderLogRepository,
             RabbitTemplate rabbitTemplate,
             UserRepository userRepository,
-            SettingsService settingsService) {
+            SettingsService settingsService,
+            AppointmentActionTokenService tokenService,
+            AppointmentCalendarService calendarService,
+            @Value("${app.public.base-url}") String publicBaseUrl) {
         this.appointmentRepository = appointmentRepository;
         this.reminderLogRepository = reminderLogRepository;
         this.rabbitTemplate = rabbitTemplate;
         this.userRepository = userRepository;
         this.settingsService = settingsService;
+        this.tokenService = tokenService;
+        this.calendarService = calendarService;
+        this.publicBaseUrl = publicBaseUrl.endsWith("/")
+                ? publicBaseUrl.substring(0, publicBaseUrl.length() - 1)
+                : publicBaseUrl;
     }
 
     // every 1 minute to guarantee 30min window is not missed
@@ -73,27 +90,44 @@ public class AppointmentNotificationScheduler {
     public void scanAndSendReminders() {
         // "Agora" no fuso de Brasília, para casar com o scheduledAt (wall-clock de Brasília).
         LocalDateTime now = LocalDateTime.now(AppConfig.APP_ZONE);
+        AppointmentConfirmationSettings cfg = settingsService.getAppointmentConfirmationSettings();
 
-        for (int i = 0; i < REMINDER_OFFSETS.length; i++) {
-            int offsetMinutes = REMINDER_OFFSETS[i][0];
-            int labelIndex = REMINDER_OFFSETS[i][1];
-            String offsetLabel = OFFSET_LABELS[labelIndex];
+        sendClientReminders(now, cfg);
+        if (Boolean.TRUE.equals(cfg.enabled())) {
+            sendConfirmationRequests(now, cfg);
+            alertAdminAboutUnconfirmed(now, cfg);
+        }
 
-            // Janela de varredura: agendamentos cujo "horário de lembrete" (scheduledAt - offset)
-            // ocorreu nos últimos GRACE minutos. Assim um tick perdido (deploy/VPS lento) é recuperado,
-            // e a idempotência (reminderLogRepository) impede qualquer duplicação.
-            LocalDateTime apptStart = now.plusMinutes(offsetMinutes - GRACE_MINUTES);
-            LocalDateTime apptEnd = now.plusMinutes(offsetMinutes);
+        // ── Lembretes para o ADMIN (configuráveis via painel) ────────────────────
+        scanAndSendAdminReminders(now);
+    }
 
-            List<Appointment> appts = appointmentRepository.findByStatusAndBetween(
-                    AppointmentStatus.SCHEDULED, apptStart, apptEnd);
+    /** Janela de varredura: agendamentos cujo "horário de lembrete" (scheduledAt - offset) ocorreu nos últimos GRACE min. */
+    private List<Appointment> findDue(LocalDateTime now, int offsetMinutes, List<AppointmentStatus> statuses) {
+        return appointmentRepository.findByStatusInAndBetween(
+                statuses,
+                now.plusMinutes(offsetMinutes - GRACE_MINUTES),
+                now.plusMinutes(offsetMinutes));
+    }
+
+    // ── Lembretes simples ao cliente (24h, 3h, 1h, 30min por padrão) ──────────
+
+    private void sendClientReminders(LocalDateTime now, AppointmentConfirmationSettings cfg) {
+        for (int offsetMinutes : cfg.clientReminderOffsets()) {
+            String offsetLabel = clientOffsetLabel(offsetMinutes);
+            List<Appointment> appts = findDue(now, offsetMinutes, REMINDABLE_STATUSES);
             if (appts.isEmpty()) continue;
 
             int enqueued = 0;
             for (Appointment a : appts) {
                 // Idempotência: pula se este (agendamento, offset, CLIENT) já foi enfileirado.
                 if (reminderLogRepository.existsByAppointmentIdAndOffsetMinutesAndRecipientType(
-                        a.getId(), offsetMinutes, "CLIENT")) {
+                        a.getId(), offsetMinutes, RECIPIENT_CLIENT)) {
+                    continue;
+                }
+                // Cliente já confirmou: lembretes configurados em "skipRemindersWhenConfirmed" são dispensados.
+                if (a.getStatus() == AppointmentStatus.CONFIRMED
+                        && cfg.skipRemindersWhenConfirmed().contains(offsetMinutes)) {
                     continue;
                 }
 
@@ -121,28 +155,170 @@ public class AppointmentNotificationScheduler {
                 emailData.put("scheduledAt", formattedDate);
                 emailData.put("description", description);
                 emailData.put("offsetLabel", offsetLabel);
+                emailData.put("googleCalendarUrl", calendarService.googleCalendarUrl(a));
+                emailData.put("icsUrl", calendarService.icsUrl(a));
                 rabbitTemplate.convertAndSend(
                         RabbitMQConfig.NOTIFICATION_EXCHANGE,
                         RabbitMQConfig.NOTIFICATION_ROUTING_KEY,
                         new NotificationMessageDTO("APPOINTMENT_REMINDER_EMAIL", emailData)
                 );
 
-                // Marca como enviado (idempotência). Best-effort: se falhar, não relança.
-                try {
-                    reminderLogRepository.save(new AppointmentReminderLog(a.getId(), offsetMinutes, "CLIENT"));
-                } catch (Exception ex) {
-                    log.warn("Falha ao registrar log de lembrete (appt={}, offset={}): {}",
-                            a.getId(), offsetMinutes, ex.getMessage());
-                }
+                markSent(a.getId(), offsetMinutes, RECIPIENT_CLIENT);
                 enqueued++;
             }
             if (enqueued > 0) {
                 log.info("Enfileirados {} lembretes para offset {} min ({})", enqueued, offsetMinutes, offsetLabel);
             }
         }
+    }
 
-        // ── Lembretes para o ADMIN (configuráveis via painel) ────────────────────
-        scanAndSendAdminReminders(now);
+    // ── Pedido de confirmação ao cliente (1h30 antes por padrão) ──────────────
+
+    private void sendConfirmationRequests(LocalDateTime now, AppointmentConfirmationSettings cfg) {
+        int offsetMinutes = cfg.confirmationRequestOffset();
+        List<Appointment> appts = findDue(now, offsetMinutes, List.of(AppointmentStatus.SCHEDULED));
+        int enqueued = 0;
+        for (Appointment a : appts) {
+            if (reminderLogRepository.existsByAppointmentIdAndOffsetMinutesAndRecipientType(
+                    a.getId(), offsetMinutes, RECIPIENT_CLIENT_CONFIRM)) {
+                continue;
+            }
+            // Marcado em cima da hora (depois do momento do pedido): já está combinado, não pede confirmação.
+            if (createdAfterRequestMoment(a, offsetMinutes)) {
+                continue;
+            }
+
+            User client = a.getClient();
+            String formattedDate = a.getScheduledAt().format(PT_BR_FORMATTER);
+            Instant expiresAt = a.getScheduledAt().atZone(AppConfig.APP_ZONE).toInstant();
+            String confirmUrl = actionUrl(a.getId(), Action.CONFIRM, expiresAt);
+            String cancelUrl = actionUrl(a.getId(), Action.CANCEL, expiresAt);
+            String rescheduleUrl = actionUrl(a.getId(), Action.RESCHEDULE, expiresAt);
+
+            // Push: o app abre a tela de confirmação (kind=appointment_confirmation); iOS mostra ações rápidas.
+            Map<String, Object> extra = new HashMap<>();
+            extra.put("kind", "appointment_confirmation");
+            extra.put("appointmentId", a.getId());
+            extra.put("scheduledAt", a.getScheduledAt().toString());
+            extra.put("categoryId", "APPOINTMENT_CONFIRMATION");
+            extra.put("actions", "confirm,cancel,reschedule");
+            Map<String, Object> pushData = new HashMap<>();
+            pushData.put("userId", client.getId());
+            pushData.put("type", "APPOINTMENT_CONFIRMATION");
+            pushData.put("title", "Confirme seu agendamento");
+            pushData.put("body", "Seu atendimento é " + humanizeOffset(offsetMinutes) + " (" + formattedDate
+                    + "). Toque para confirmar, remarcar ou cancelar.");
+            pushData.put("data", extra);
+            rabbitTemplate.convertAndSend(
+                    RabbitMQConfig.NOTIFICATION_EXCHANGE,
+                    RabbitMQConfig.NOTIFICATION_ROUTING_KEY,
+                    new NotificationMessageDTO("PUSH_MESSAGE", pushData));
+
+            // E-mail com os botões (links assinados)
+            Map<String, Object> emailData = new HashMap<>();
+            emailData.put("email", client.getEmail());
+            emailData.put("name", client.getName());
+            emailData.put("scheduledAt", formattedDate);
+            emailData.put("description", a.getNotes() != null ? a.getNotes() : "");
+            emailData.put("confirmUrl", confirmUrl);
+            emailData.put("cancelUrl", cancelUrl);
+            emailData.put("rescheduleUrl", rescheduleUrl);
+            emailData.put("googleCalendarUrl", calendarService.googleCalendarUrl(a));
+            emailData.put("icsUrl", calendarService.icsUrl(a));
+            rabbitTemplate.convertAndSend(
+                    RabbitMQConfig.NOTIFICATION_EXCHANGE,
+                    RabbitMQConfig.NOTIFICATION_ROUTING_KEY,
+                    new NotificationMessageDTO("APPOINTMENT_CONFIRMATION_EMAIL", emailData));
+
+            markSent(a.getId(), offsetMinutes, RECIPIENT_CLIENT_CONFIRM);
+            enqueued++;
+        }
+        if (enqueued > 0) {
+            log.info("Enfileirados {} pedidos de confirmação (offset {} min)", enqueued, offsetMinutes);
+        }
+    }
+
+    // ── Aviso ao admin: cliente não confirmou (1h antes por padrão) ───────────
+
+    private void alertAdminAboutUnconfirmed(LocalDateTime now, AppointmentConfirmationSettings cfg) {
+        int alertOffset = cfg.adminAlertOffset();
+        List<Appointment> appts = findDue(now, alertOffset, List.of(AppointmentStatus.SCHEDULED));
+        if (appts.isEmpty()) return;
+
+        List<User> admins = userRepository.findByRole(RoleType.CLUB_ADMIN);
+        if (admins.isEmpty()) return;
+
+        int enqueued = 0;
+        for (Appointment a : appts) {
+            if (reminderLogRepository.existsByAppointmentIdAndOffsetMinutesAndRecipientType(
+                    a.getId(), alertOffset, RECIPIENT_ADMIN_UNCONFIRMED)) {
+                continue;
+            }
+            // Só alerta se o cliente de fato recebeu o pedido de confirmação.
+            if (!reminderLogRepository.existsByAppointmentIdAndOffsetMinutesAndRecipientType(
+                    a.getId(), cfg.confirmationRequestOffset(), RECIPIENT_CLIENT_CONFIRM)) {
+                continue;
+            }
+
+            String clientName = a.getClient() != null && a.getClient().getName() != null
+                    ? a.getClient().getName() : "Cliente";
+            String formattedDate = a.getScheduledAt().format(PT_BR_FORMATTER);
+            String body = clientName + " ainda não confirmou o atendimento de " + formattedDate + " ("
+                    + humanizeOffset(alertOffset) + "). Mantenha, cancele ou troque o horário.";
+
+            for (User admin : admins) {
+                Map<String, Object> extra = new HashMap<>();
+                extra.put("kind", "admin_unconfirmed");
+                extra.put("appointmentId", a.getId());
+                extra.put("scheduledAt", a.getScheduledAt().toString());
+                extra.put("actions", "keep,cancel,reschedule");
+                Map<String, Object> pushData = new HashMap<>();
+                pushData.put("userId", admin.getId());
+                pushData.put("type", "ADMIN_APPOINTMENT_UNCONFIRMED");
+                pushData.put("title", "Cliente não confirmou");
+                pushData.put("body", body);
+                pushData.put("data", extra);
+                rabbitTemplate.convertAndSend(
+                        RabbitMQConfig.NOTIFICATION_EXCHANGE,
+                        RabbitMQConfig.NOTIFICATION_ROUTING_KEY,
+                        new NotificationMessageDTO("PUSH_MESSAGE", pushData));
+            }
+            markSent(a.getId(), alertOffset, RECIPIENT_ADMIN_UNCONFIRMED);
+            enqueued++;
+        }
+        if (enqueued > 0) {
+            log.info("Avisados admins sobre {} agendamento(s) sem confirmação (offset {} min)", enqueued, alertOffset);
+        }
+    }
+
+    /** True se o agendamento foi criado depois do momento em que o pedido de confirmação seria enviado. */
+    private boolean createdAfterRequestMoment(Appointment a, int offsetMinutes) {
+        if (a.getCreatedAt() == null) return false;
+        // createdAt é gravado no fuso padrão da JVM; converte para o fuso de Brasília antes de comparar.
+        LocalDateTime createdInAppZone = a.getCreatedAt()
+                .atZone(ZoneId.systemDefault())
+                .withZoneSameInstant(AppConfig.APP_ZONE)
+                .toLocalDateTime();
+        return createdInAppZone.isAfter(a.getScheduledAt().minusMinutes(offsetMinutes));
+    }
+
+    private String actionUrl(Long appointmentId, Action action, Instant expiresAt) {
+        return publicBaseUrl + "/appointment-action?token=" + tokenService.create(appointmentId, action, expiresAt);
+    }
+
+    /** Marca como enviado (idempotência). Best-effort: se falhar, não relança. */
+    private void markSent(Long appointmentId, int offsetMinutes, String recipientType) {
+        try {
+            reminderLogRepository.save(new AppointmentReminderLog(appointmentId, offsetMinutes, recipientType));
+        } catch (Exception ex) {
+            log.warn("Falha ao registrar log de lembrete (appt={}, offset={}, tipo={}): {}",
+                    appointmentId, offsetMinutes, recipientType, ex.getMessage());
+        }
+    }
+
+    /** Mantém os rótulos originais dos lembretes ("amanhã" para 24h). */
+    private String clientOffsetLabel(int minutes) {
+        return minutes == 24 * 60 ? "amanhã" : humanizeOffset(minutes);
     }
 
     /**
@@ -165,17 +341,13 @@ public class AppointmentNotificationScheduler {
         }
 
         for (int offsetMinutes : offsets) {
-            LocalDateTime apptStart = now.plusMinutes(offsetMinutes - GRACE_MINUTES);
-            LocalDateTime apptEnd = now.plusMinutes(offsetMinutes);
-
-            List<Appointment> appts = appointmentRepository.findByStatusAndBetween(
-                    AppointmentStatus.SCHEDULED, apptStart, apptEnd);
+            List<Appointment> appts = findDue(now, offsetMinutes, REMINDABLE_STATUSES);
             if (appts.isEmpty()) continue;
 
             int enqueued = 0;
             for (Appointment a : appts) {
                 if (reminderLogRepository.existsByAppointmentIdAndOffsetMinutesAndRecipientType(
-                        a.getId(), offsetMinutes, "ADMIN")) {
+                        a.getId(), offsetMinutes, RECIPIENT_ADMIN)) {
                     continue;
                 }
 
@@ -203,12 +375,7 @@ public class AppointmentNotificationScheduler {
                     );
                 }
 
-                try {
-                    reminderLogRepository.save(new AppointmentReminderLog(a.getId(), offsetMinutes, "ADMIN"));
-                } catch (Exception ex) {
-                    log.warn("Falha ao registrar log de lembrete ADMIN (appt={}, offset={}): {}",
-                            a.getId(), offsetMinutes, ex.getMessage());
-                }
+                markSent(a.getId(), offsetMinutes, RECIPIENT_ADMIN);
                 enqueued++;
             }
             if (enqueued > 0) {

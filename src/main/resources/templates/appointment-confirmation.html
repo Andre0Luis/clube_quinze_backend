@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Confirme seu agendamento</title>
+  <style>
+    body { margin:0; padding:0; background:#f3f5f8; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+    .wrap { max-width:560px; margin:32px auto; background:#fff; border-radius:12px; border:1px solid #e4e7ec; overflow:hidden; }
+    .header { background:#00053d; padding:24px 28px; text-align:center; }
+    .body { padding:28px; }
+    .body h2 { margin:0 0 12px; font-size:20px; color:#101828; }
+    .body p { margin:0 0 14px; color:#344054; line-height:1.6; font-size:15px; }
+    .highlight { background:#eef4ff; border-left:4px solid #00053d; padding:14px 18px; border-radius:8px; margin:18px 0; }
+    .highlight strong { display:block; color:#00053d; font-size:15px; margin-bottom:4px; }
+    .highlight span { color:#344054; font-size:14px; }
+    .btn { display:block; text-align:center; text-decoration:none; border-radius:10px; padding:14px 16px; font-size:16px; font-weight:600; margin:10px 0; }
+    .btn-confirm { background:#00053d; color:#ffffff; }
+    .btn-secondary { background:#eef4ff; color:#00053d; }
+    .btn-cancel { background:#fef3f2; color:#b42318; }
+    .footer { padding:18px 28px; background:#f9fafb; text-align:center; color:#98a2b3; font-size:12px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <img src="https://clubequinzeapp.cloud/assets/logo-email.png" alt="Clube Quinze" style="height: 42px; width: auto; border: 0;" />
+  </div>
+  <div class="body">
+    <h2>Confirme seu agendamento</h2>
+    <p>Olá, <strong th:text="${name}">Cliente</strong>! Falta pouco para o seu atendimento. Pode confirmar que você vem?</p>
+    <div class="highlight">
+      <strong>📅 Data e horário</strong>
+      <span th:text="${scheduledAt}">30/03/2026 às 14:00</span>
+    </div>
+    <div th:if="${description != null and !description.isEmpty()}" class="highlight">
+      <strong>📝 Descrição</strong>
+      <span th:text="${description}">—</span>
+    </div>
+    <a class="btn btn-confirm" th:href="${confirmUrl}">Confirmar presença</a>
+    <a class="btn btn-secondary" th:href="${rescheduleUrl}">Remarcar</a>
+    <a class="btn btn-cancel" th:href="${cancelUrl}">Cancelar agendamento</a>
+    <div th:if="${googleCalendarUrl != null and !googleCalendarUrl.isEmpty()}" style="margin:18px 0;">
+      <p style="margin:0 0 8px;font-size:14px;color:#344054;">Salve na sua agenda:</p>
+      <a th:href="${googleCalendarUrl}" style="display:inline-block;background:#00053d;color:#ffffff;text-decoration:none;border-radius:8px;padding:10px 14px;font-size:14px;font-weight:600;margin:0 6px 6px 0;">Google Agenda</a>
+      <a th:href="${icsUrl}" style="display:inline-block;background:#eef4ff;color:#00053d;text-decoration:none;border-radius:8px;padding:10px 14px;font-size:14px;font-weight:600;margin:0 6px 6px 0;">Apple / Outlook (.ics)</a>
+    </div>
+    <p style="font-size:13px;color:#667085;">Remarcações precisam da aprovação do clube. Se não for possível, mantemos o horário original.</p>
+  </div>
+  <div class="footer">Clube Quinze &mdash; Este é um e-mail automático.</div>
+</div>
+</body>
+</html>

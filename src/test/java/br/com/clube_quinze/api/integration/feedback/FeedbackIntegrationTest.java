@@ -69,7 +69,7 @@ class FeedbackIntegrationTest extends AbstractIntegrationTest {
         memberId = ((Number) meRes.getBody().get("id")).longValue();
 
         // Cria agendamento futuro com data e hora bem aleatórias para evitar conflito de slot entre setups
-        int dayOffset = 14 + Math.abs(UUID.randomUUID().hashCode() % 60);  // 14 a 73 dias
+        int dayOffset = 500 + Math.abs(UUID.randomUUID().hashCode() % 400); // 500 a 899 dias: faixa só deste teste (evita colisão com os demais, que usam < 400)
         int hour = 9 + Math.abs(UUID.randomUUID().hashCode() % 11);        // 9h a 19h
         LocalDateTime scheduledAt = LocalDateTime.now()
             .plusDays(dayOffset)

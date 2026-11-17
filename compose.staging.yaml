@@ -1,0 +1,161 @@
+# Ambiente de HOMOLOGAÇÃO ("produção oculta") — isolado da produção.
+#
+# - Projeto próprio (clube-quinze-staging): rede, banco, fila e uploads separados. Não enxerga a produção.
+# - Banco limpo + dados falsos. E-mails vão para o Mailpit (nada sai de verdade); push (Firebase) desligado.
+# - A API só responde a quem tem a chave de acesso (STAGING_ACCESS_KEY) — ver StagingAccessFilter.
+# - Subido pelo workflow "Deploy homologação" (hostinger/deploy-on-vps, project-name clube-quinze-staging),
+#   que passa as variáveis STAGING_* a partir dos segredos do GitHub Environment "staging".
+#
+# Acesso: SSH com túnel (API em 127.0.0.1:8081, Mailpit em 127.0.0.1:8025) e, com HTTPS habilitado
+# (COMPOSE_PROFILES=tls), https://staging.clubequinzeapp.cloud:8443.
+name: clube-quinze-staging
+
+services:
+  db:
+    image: mariadb:11.4 # mesma versão de produção (11.4.x)
+    container_name: clube-quinze-staging-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${STAGING_DB_ROOT_PASSWORD:?defina STAGING_DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: clube_quinze
+      MARIADB_USER: clube_quinze
+      MARIADB_PASSWORD: ${STAGING_DB_PASSWORD:?defina STAGING_DB_PASSWORD}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=64M
+      - --max-connections=40
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    mem_limit: 256m
+    cpus: "0.3"
+
+  rabbitmq:
+    image: rabbitmq:3-alpine
+    container_name: clube-quinze-staging-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: staging
+      RABBITMQ_DEFAULT_PASS: ${STAGING_RABBIT_PASSWORD:?defina STAGING_RABBIT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    mem_limit: 256m
+    cpus: "0.2"
+
+  # Caixa de entrada de teste: recebe todos os e-mails da homologação (UI em 127.0.0.1:8025).
+  mailpit:
+    image: axllent/mailpit:v1.21
+    container_name: clube-quinze-staging-mailpit
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+    mem_limit: 64m
+
+  api:
+    image: ghcr.io/andre0luis/clube-quinze-backend:${STAGING_TAG:-develop}
+    container_name: clube-quinze-staging-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: staging
+      DATABASE_HOST: db
+      DATABASE_PORT: "3306"
+      DATABASE_URL: jdbc:mariadb://db:3306/clube_quinze
+      DATABASE_USERNAME: clube_quinze
+      DATABASE_PASSWORD: ${STAGING_DB_PASSWORD:?defina STAGING_DB_PASSWORD}
+      JWT_SECRET: ${STAGING_JWT_SECRET:?defina STAGING_JWT_SECRET}
+      JWT_EXPIRATION_MINUTES: "60"
+      JWT_REFRESH_EXPIRATION_DAYS: "7"
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: staging
+      SPRING_RABBITMQ_PASSWORD: ${STAGING_RABBIT_PASSWORD:?defina STAGING_RABBIT_PASSWORD}
+      # Nada de envio real: e-mail cai no Mailpit e o push do Firebase fica desligado.
+      BREVO_ENABLED: "false"
+      MAIL_HOST: mailpit
+      MAIL_PORT: "1025"
+      MAIL_FROM: homologacao@clubequinzeapp.cloud
+      FIREBASE_ENABLED: "false"
+      MEDIA_STORAGE_PATH: /uploads
+      MEDIA_BASE_URL: https://staging.clubequinzeapp.cloud:8443/uploads
+      APP_PUBLIC_BASE_URL: https://staging.clubequinzeapp.cloud:8443
+      RESET_BASE_URL: https://staging.clubequinzeapp.cloud:8443/reset-password
+      # Google Agenda (OAuth do administrador). Vêm dos segredos do GitHub Environment "staging".
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_TOKEN_ENCRYPTION_KEY: ${GOOGLE_TOKEN_ENCRYPTION_KEY:-}
+      GOOGLE_NEW_CALENDAR_NAME: Clube Quinze (homologação)
+      # Porta de entrada: sem a chave, 404. Links de e-mail e retorno do Google abrem sem chave.
+      APP_STAGING_ACCESS_KEY: ${STAGING_ACCESS_KEY:?defina STAGING_ACCESS_KEY}
+      APP_STAGING_PUBLIC_PATHS: /appointment-action,/appointment-calendar,/integrations/google/callback
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - uploads:/uploads
+    mem_limit: 512m
+    mem_reservation: 256m
+    cpus: "0.4"
+
+  # HTTPS público da homologação na porta 8443 (a 443 é da produção). Só sobe com COMPOSE_PROFILES=tls, depois
+  # que o certificado staging.clubequinzeapp.cloud existir (scripts/staging/request-cert.sh).
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: clube-quinze-staging-nginx
+    profiles: ["tls"]
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8443:443"
+    configs:
+      - source: nginx_conf
+        target: /etc/nginx/conf.d/default.conf
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - uploads:/var/www/uploads:ro
+    mem_limit: 48m
+
+configs:
+  nginx_conf:
+    content: |
+      server {
+          listen 443 ssl;
+          http2 on;
+          server_name staging.clubequinzeapp.cloud;
+
+          ssl_certificate     /etc/letsencrypt/live/staging.clubequinzeapp.cloud/fullchain.pem;
+          ssl_certificate_key /etc/letsencrypt/live/staging.clubequinzeapp.cloud/privkey.pem;
+          ssl_protocols       TLSv1.2 TLSv1.3;
+
+          client_max_body_size 50M;
+
+          location /uploads/ {
+              alias /var/www/uploads/;
+              try_files $$uri =404;
+              add_header Cache-Control "public, max-age=3600";
+          }
+
+          location / {
+              proxy_pass http://api:8080;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Forwarded-Proto $$scheme;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_read_timeout 60s;
+          }
+      }
+
+volumes:
+  db-data:
+  uploads:

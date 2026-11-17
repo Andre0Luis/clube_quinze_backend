@@ -55,7 +55,14 @@ public class SecurityConfig {
             .requestMatchers("/actuator/health", "/api-docs/**", "/swagger-ui.html", "/swagger-ui/**",
                 "/api/v1/auth/**")
                         .permitAll()
+                        .requestMatchers(HttpMethod.GET, "/actuator/info").permitAll()
                         .requestMatchers(HttpMethod.GET, "/reset-password").permitAll()
+                        // Botões do e-mail de confirmação: protegidos por token assinado, não por JWT.
+                        .requestMatchers(HttpMethod.GET, "/appointment-action").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/appointment-action").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/appointment-calendar").permitAll()
+                        // Retorno do login do Google: protegido pelo "state" assinado, não por JWT.
+                        .requestMatchers(HttpMethod.GET, "/integrations/google/callback").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/public/policies/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/plans", "/api/v1/plans/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/community/**").permitAll()

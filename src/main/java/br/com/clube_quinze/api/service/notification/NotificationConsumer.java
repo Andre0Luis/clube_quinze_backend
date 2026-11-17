@@ -15,11 +15,14 @@ public class NotificationConsumer {
 
     private final NotificationService notificationService;
     private final PushNotificationService pushNotificationService;
+    private final br.com.clube_quinze.api.service.google.GoogleCalendarService googleCalendarService;
 
     public NotificationConsumer(NotificationService notificationService,
-                                PushNotificationService pushNotificationService) {
+                                PushNotificationService pushNotificationService,
+                                br.com.clube_quinze.api.service.google.GoogleCalendarService googleCalendarService) {
         this.notificationService = notificationService;
         this.pushNotificationService = pushNotificationService;
+        this.googleCalendarService = googleCalendarService;
     }
 
     @RabbitListener(queues = RabbitMQConfig.NOTIFICATION_QUEUE)
@@ -40,8 +43,14 @@ public class NotificationConsumer {
                 case "APPOINTMENT_REMINDER_EMAIL":
                     handleAppointmentReminderEmail(message.getData());
                     break;
+                case "APPOINTMENT_CONFIRMATION_EMAIL":
+                    handleAppointmentConfirmationEmail(message.getData());
+                    break;
                 case "APPOINTMENT_RESCHEDULED_EMAIL":
                     handleAppointmentRescheduledEmail(message.getData());
+                    break;
+                case "GOOGLE_CALENDAR_SYNC":
+                    googleCalendarService.syncAppointment(getLong(message.getData(), "appointmentId"));
                     break;
                 case "PUSH_MESSAGE":
                 case "APPOINTMENT_REMINDER_PUSH":
@@ -85,7 +94,23 @@ public class NotificationConsumer {
                 getString(data, "name"),
                 getString(data, "scheduledAt"),
                 getString(data, "description"),
-                getString(data, "offsetLabel")
+                getString(data, "offsetLabel"),
+                getString(data, "googleCalendarUrl"),
+                getString(data, "icsUrl")
+        );
+    }
+
+    private void handleAppointmentConfirmationEmail(Map<String, Object> data) {
+        notificationService.notifyAppointmentConfirmationRequest(
+                getString(data, "email"),
+                getString(data, "name"),
+                getString(data, "scheduledAt"),
+                getString(data, "description"),
+                getString(data, "confirmUrl"),
+                getString(data, "cancelUrl"),
+                getString(data, "rescheduleUrl"),
+                getString(data, "googleCalendarUrl"),
+                getString(data, "icsUrl")
         );
     }
 
@@ -95,7 +120,9 @@ public class NotificationConsumer {
                 getString(data, "name"),
                 getString(data, "oldScheduledAt"),
                 getString(data, "newScheduledAt"),
-                getString(data, "description")
+                getString(data, "description"),
+                getString(data, "googleCalendarUrl"),
+                getString(data, "icsUrl")
         );
     }
 
