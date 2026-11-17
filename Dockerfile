@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-FROM eclipse-temurin:21-jdk AS builder
+FROM eclipse-temurin:24-jdk AS builder
 ARG REPO_URL=https://github.com/Andre0Luis/clube_quinze_backend.git
 ARG REPO_REF=main
 WORKDIR /workspace
@@ -19,7 +19,7 @@ RUN chmod +x mvnw
 RUN ./mvnw -B -DskipTests clean package && \
 		./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version > /workspace/app.version
 
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:24-jre
 WORKDIR /app
 # Flags otimizadas para container em VPS com pouca RAM/CPU:
 # - UseContainerSupport: respeita os cgroups do container (evita over-commit de memória)
