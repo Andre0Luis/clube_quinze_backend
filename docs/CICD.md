@@ -45,16 +45,30 @@ As ações do GitHub estão fixadas por SHA; o Dependabot atualiza.
 *Actions → Deploy produção → Run workflow* com `action = deploy` e a versão anterior (ex.: `1.17.0`).
 O primeiro rollback precisa de uma imagem com versão: rode uma vez `action = baseline` com a versão que está no ar hoje.
 
-## Atenção: a ação da Hostinger SUBSTITUI o `.env`
-`hostinger/deploy-on-vps` grava o `.env` do projeto **apenas** com o que for passado em `environment-variables` (confirmado na
-homologação: o `.env` dela só tem as variáveis `STAGING_*`). Por isso:
-- **Homologação:** o workflow passa todas as variáveis (vindas dos segredos do Environment `staging`).
-- **Produção:** o workflow **não passa nenhuma** (o `.env` da VPS tem banco, JWT e e-mail e precisa ser preservado). A versão é
-  ativada movendo o ponteiro `:latest` para a imagem validada; o rollback move o ponteiro de volta.
-- Credenciais novas em produção (ex.: Google Agenda) entram **no `.env` da VPS**, não pelo workflow.
+## Atenção: a ação da Hostinger REESCREVE o `.env` a cada deploy
+`hostinger/deploy-on-vps` grava o `.env` do projeto **sempre**: com as variáveis de `environment-variables` ou, se nenhuma for
+informada, com o `.env.example` do repositório (valores em branco). Foi isso que derrubou a produção no release 1.18.0
+(JWT, banco e e-mail vazios). Regras:
+- **Homologação:** o workflow passa todas as variáveis (segredos do Environment `staging`).
+- **Produção:** **todas** as variáveis vêm do segredo `PROD_ENV` do Environment `production` (linhas `CHAVE=valor`), mais
+  `IMAGE_TAG` definido pelo workflow. O workflow **barra o deploy** se `PROD_ENV` estiver vazio ou sem as chaves essenciais.
+- Cada versão sobe com **tag própria** de imagem (`IMAGE_TAG=1.18.1`): a VPS é obrigada a baixá-la. Mover `:latest` não adianta,
+  porque a VPS reaproveita a imagem em cache com esse nome.
+- Para atualizar uma variável de produção, atualize o segredo `PROD_ENV` (não edite o `.env` da VPS: o próximo deploy o reescreve).
 
-A build (`app.build` em `/actuator/info`) é o sha curto do commit, gravado **dentro** da imagem (`ARG GIT_SHA`); homologação e
-produção esperam essa build para saber que o deploy novo realmente subiu.
+Criar/atualizar `PROD_ENV` a partir do `.env` atual da VPS (os valores não aparecem na tela):
+```bash
+ssh root@72.60.242.216 'grep -v "^#" /docker/clube_quinze_backend/.env | grep "="' | gh secret set PROD_ENV --env production --repo Andre0Luis/clube_quinze_backend
+```
+
+## Saúde (`/health`)
+`GET /health` é público e informa: `status` (UP, DEGRADED se a fila caiu, DOWN/503 se o banco caiu), `app`, `version`, `build`
+(sha curto gravado na imagem), `environment`, `uptimeSeconds` e `checks` (banco e fila de verdade; push, e-mail e Google só
+informam se estão configurados). Os deploys de homologação e produção esperam a **build certa** com banco `UP` antes de seguir.
+
+## Tags e Releases
+A tag `vX.Y.Z` é a versão do backend (`pom.xml`). A cada deploy de produção **bem-sucedido** o workflow cria a **Release** do GitHub
+com as mudanças desde a versão anterior (notas geradas dos PRs). Deploy que falha e volta para a versão anterior **não** gera Release.
 
 ## Variáveis e segredos necessários
 - `secrets.HOSTINGER_API_KEY` e `vars.HOSTINGER_VM_ID` (já existiam).

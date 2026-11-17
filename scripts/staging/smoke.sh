@@ -64,10 +64,13 @@ code="$(curl -sS -m 30 -o /dev/null -w '%{http_code}' "$BASE/api/v1/plans")"
 [ "$code" = "404" ] || fail "sem chave deveria ser 404, veio $code"
 echo "✔ porta de entrada fechada"
 
-step "Versão publicada"
-api GET /actuator/info; expect 200 "GET /actuator/info"
-version="$(field '.app.version // "?"')"
-echo "  versão no ar: $version"
+step "Saúde (/health): aplicação, versão, build e conexões"
+api GET /health; expect 200 "GET /health"
+version="$(field '.version // "?"')"
+echo "  app: $(field '.app') | versão: $version | build: $(field '.build') | ambiente: $(field '.environment')"
+echo "  banco: $(field '.checks.database.status') | fila: $(field '.checks.rabbitmq.status') | status geral: $(field '.status')"
+[ "$(field '.checks.database.status')" = "UP" ] || fail "o banco deveria estar UP"
+[ "$(field '.checks.rabbitmq.status')" = "UP" ] || fail "a fila (RabbitMQ) deveria estar UP"
 if [ -n "$EXPECTED_VERSION" ] && [ "$version" != "$EXPECTED_VERSION" ]; then
   fail "versão esperada $EXPECTED_VERSION, no ar $version"
 fi
