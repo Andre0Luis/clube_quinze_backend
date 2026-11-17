@@ -26,6 +26,10 @@ WORKDIR /app
 # - MaxRAMPercentage: usa até 75% da RAM disponível para heap
 # - TieredCompilation + nível 4: mantém JIT completo mas prioriza startup
 # - G1GC: coleta de lixo equilibrada entre latência e throughput
+# Identificação da build (sha curto do commit), exposta em /actuator/info como app.build. Vem de dentro da imagem,
+# então a imagem validada na homologação e promovida à produção informa exatamente a mesma build.
+ARG GIT_SHA=unknown
+ENV APP_BUILD=${GIT_SHA}
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=30.0 -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom"
 ENV APP_VERSION_FILE="/app/app.version"
 # Copia qualquer JAR gerado pelo build (evita quebrar quando a versão do artefato muda)

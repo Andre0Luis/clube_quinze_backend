@@ -45,6 +45,17 @@ As ações do GitHub estão fixadas por SHA; o Dependabot atualiza.
 *Actions → Deploy produção → Run workflow* com `action = deploy` e a versão anterior (ex.: `1.17.0`).
 O primeiro rollback precisa de uma imagem com versão: rode uma vez `action = baseline` com a versão que está no ar hoje.
 
+## Atenção: a ação da Hostinger SUBSTITUI o `.env`
+`hostinger/deploy-on-vps` grava o `.env` do projeto **apenas** com o que for passado em `environment-variables` (confirmado na
+homologação: o `.env` dela só tem as variáveis `STAGING_*`). Por isso:
+- **Homologação:** o workflow passa todas as variáveis (vindas dos segredos do Environment `staging`).
+- **Produção:** o workflow **não passa nenhuma** (o `.env` da VPS tem banco, JWT e e-mail e precisa ser preservado). A versão é
+  ativada movendo o ponteiro `:latest` para a imagem validada; o rollback move o ponteiro de volta.
+- Credenciais novas em produção (ex.: Google Agenda) entram **no `.env` da VPS**, não pelo workflow.
+
+A build (`app.build` em `/actuator/info`) é o sha curto do commit, gravado **dentro** da imagem (`ARG GIT_SHA`); homologação e
+produção esperam essa build para saber que o deploy novo realmente subiu.
+
 ## Variáveis e segredos necessários
 - `secrets.HOSTINGER_API_KEY` e `vars.HOSTINGER_VM_ID` (já existiam).
 - Imagem no GHCR usa o `GITHUB_TOKEN` automático. O pacote `clube-quinze-backend` precisa permitir escrita a este

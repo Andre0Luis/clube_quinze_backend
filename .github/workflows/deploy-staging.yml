@@ -50,9 +50,10 @@ jobs:
             STAGING_RABBIT_PASSWORD=${{ secrets.STAGING_RABBIT_PASSWORD }}
             STAGING_JWT_SECRET=${{ secrets.STAGING_JWT_SECRET }}
             STAGING_ACCESS_KEY=${{ secrets.STAGING_ACCESS_KEY }}
-            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
-            GOOGLE_TOKEN_ENCRYPTION_KEY=${{ secrets.GOOGLE_TOKEN_ENCRYPTION_KEY }}
+            # Integração com o Google "congelada": só recebe as credenciais com GOOGLE_CALENDAR_ENABLED=true.
+            GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CALENDAR_ENABLED == 'true' && secrets.GOOGLE_CLIENT_ID || '' }}
+            GOOGLE_CLIENT_SECRET=${{ vars.GOOGLE_CALENDAR_ENABLED == 'true' && secrets.GOOGLE_CLIENT_SECRET || '' }}
+            GOOGLE_TOKEN_ENCRYPTION_KEY=${{ vars.GOOGLE_CALENDAR_ENABLED == 'true' && secrets.GOOGLE_TOKEN_ENCRYPTION_KEY || '' }}
             COMPOSE_PROFILES=${{ vars.STAGING_TLS == 'true' && 'tls' || '' }}
 
       # O teste de fumaça só roda quando o HTTPS público (porta 8443) está habilitado.
@@ -65,12 +66,13 @@ jobs:
         run: |
           # O deploy da Hostinger é assíncrono: só testa quando a build NOVA (a tag desta imagem) estiver respondendo.
           # Sem isso o teste passaria contra o container antigo, ainda no ar durante a troca.
+          EXPECTED="${TAG: -7}" # a tag termina com o sha curto (develop-abc1234, 1.18.0-rc.abc1234)
           ok=""
           for i in $(seq 1 48); do
             info=$(curl -s -m 10 -H "X-Staging-Key: $STAGING_ACCESS_KEY" "$STAGING_URL/actuator/info" || true)
             build=$(echo "$info" | jq -r '.app.build // empty' 2>/dev/null || true)
-            if [ "$build" = "$TAG" ]; then ok=1; echo "Build $TAG respondendo (tentativa $i)."; break; fi
-            echo "Aguardando a build $TAG ($i/48) — no ar agora: ${build:-nenhuma/indisponível}"; sleep 10
+            if [ "$build" = "$EXPECTED" ]; then ok=1; echo "Build $EXPECTED ($TAG) respondendo (tentativa $i)."; break; fi
+            echo "Aguardando a build $EXPECTED ($i/48) — no ar agora: ${build:-nenhuma/indisponível}"; sleep 10
           done
           if [ -z "$ok" ]; then echo "::error::A build $TAG não subiu na homologação em 8 minutos."; exit 1; fi
           bash scripts/staging/smoke.sh "$STAGING_URL" "$STAGING_ACCESS_KEY"

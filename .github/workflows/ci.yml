@@ -180,6 +180,7 @@ jobs:
               echo "::error::Branch inesperada: $GITHUB_REF_NAME"; exit 1 ;;
           esac
           {
+            echo "short=$SHORT"
             echo "image=$IMAGE"
             echo "version=$POM_VERSION"
             echo "ref_tag=$(echo "$TAGS" | tail -n1)"
@@ -206,6 +207,8 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+          build-args: |
+            GIT_SHA=${{ steps.meta.outputs.short }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
