@@ -106,6 +106,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Promover a imagem validada (X.Y.Z-rc -> X.Y.Z, sem reconstruir)
+        id: promote
         run: |
           VERSION="${{ steps.v.outputs.version }}"
           IMAGE="${{ steps.v.outputs.image }}"
@@ -123,6 +124,10 @@ jobs:
             fi
             docker buildx imagetools create -t "$IMAGE:$VERSION" "$IMAGE:$VERSION-rc"
           fi
+          # Build (sha curto) que a aplicação deve informar em /actuator/info depois do deploy.
+          docker pull -q "$IMAGE:$VERSION"
+          REV=$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$IMAGE:$VERSION")
+          echo "build=${REV:0:7}" >> "$GITHUB_OUTPUT"
 
       - name: Versão anterior (para rollback)
         id: prev
@@ -130,16 +135,19 @@ jobs:
           PREV=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -vx "v${{ steps.v.outputs.version }}" | head -n1 || true)
           echo "version=${PREV#v}" >> "$GITHUB_OUTPUT"
 
+      # A produção usa a imagem :latest (compose.yaml). NÃO passamos "environment-variables" à ação da Hostinger: ela
+      # SUBSTITUI o .env inteiro do projeto (banco, JWT, e-mail) pelas variáveis informadas. Por isso a versão é ativada
+      # movendo o ponteiro :latest para a imagem validada; o rollback move o ponteiro de volta.
+      - name: Ativar a versão (:latest -> X.Y.Z)
+        run: |
+          IMAGE="${{ steps.v.outputs.image }}"
+          docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE:${{ steps.v.outputs.version }}"
+
       - name: Deploy na Hostinger
         uses: hostinger/deploy-on-vps@b0868cec74bfa63af6bfa7bdb0dfee2f9bef13ea # v2
         with:
           api-key: ${{ secrets.HOSTINGER_API_KEY }}
           virtual-machine: ${{ vars.HOSTINGER_VM_ID }}
-          environment-variables: |
-            IMAGE_TAG=${{ steps.v.outputs.version }}
-            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
-            GOOGLE_TOKEN_ENCRYPTION_KEY=${{ secrets.GOOGLE_TOKEN_ENCRYPTION_KEY }}
 
       - name: Verificar a nova versão no ar
         id: health
@@ -148,7 +156,7 @@ jobs:
           for i in $(seq 1 40); do
             INFO=$(curl -fsS -m 10 "$PROD_URL/actuator/info" 2>/dev/null || true)
             BUILD=$(echo "$INFO" | jq -r '.app.build // empty' 2>/dev/null || true)
-            if echo "$INFO" | grep -q "\"version\":\"$VERSION\"" && [ "$BUILD" = "$VERSION" ]; then
+            if echo "$INFO" | grep -q "\"version\":\"$VERSION\"" && [ "$BUILD" = "${{ steps.promote.outputs.build }}" ]; then
               CODE=$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$PROD_URL/api/v1/plans" || true)
               if [ "$CODE" = "200" ]; then
                 echo "Versão $VERSION no ar e respondendo (tentativa $i)."; exit 0
@@ -159,26 +167,20 @@ jobs:
           echo "::error::A versão $VERSION não respondeu como esperado em $PROD_URL."
           exit 1
 
-      - name: Rollback para a versão anterior
+      - name: Rollback — devolver :latest à versão anterior
+        if: failure() && steps.health.outcome == 'failure' && steps.prev.outputs.version != ''
+        run: |
+          IMAGE="${{ steps.v.outputs.image }}"
+          docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE:${{ steps.prev.outputs.version }}"
+
+      - name: Rollback — refazer o deploy com a versão anterior
         if: failure() && steps.health.outcome == 'failure' && steps.prev.outputs.version != ''
         uses: hostinger/deploy-on-vps@b0868cec74bfa63af6bfa7bdb0dfee2f9bef13ea # v2
         with:
           api-key: ${{ secrets.HOSTINGER_API_KEY }}
           virtual-machine: ${{ vars.HOSTINGER_VM_ID }}
-          environment-variables: |
-            IMAGE_TAG=${{ steps.prev.outputs.version }}
-            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
-            GOOGLE_TOKEN_ENCRYPTION_KEY=${{ secrets.GOOGLE_TOKEN_ENCRYPTION_KEY }}
 
       - name: Aviso de rollback
         if: failure() && steps.health.outcome == 'failure'
         run: |
           echo "::warning::Deploy da v${{ steps.v.outputs.version }} falhou na verificação. Rollback solicitado para v${{ steps.prev.outputs.version }} (se existir)."
-
-      # :latest passa a significar "o que está rodando em produção".
-      - name: Atualizar :latest
-        if: success()
-        run: |
-          IMAGE="${{ steps.v.outputs.image }}"
-          docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE:${{ steps.v.outputs.version }}"
