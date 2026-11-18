@@ -45,4 +45,13 @@ class PublicPoliciesIntegrationTest extends AbstractIntegrationTest {
         assertThat(html).contains("<title>Clube Quinze", "<h1>Clube Quinze</h1>", "Para que serve o aplicativo",
                 "Integração com o Google Agenda", "href=\"/privacy-policy\"");
     }
+
+    @Test
+    @DisplayName("Caminho público inexistente responde 404 (e não 500)")
+    void caminhoInexistenteRetorna404() {
+        ResponseEntity<String> response = restTemplate.getForEntity(
+                url("/.well-known/apple-app-site-association"), String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
 }

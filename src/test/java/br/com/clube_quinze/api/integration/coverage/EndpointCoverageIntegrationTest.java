@@ -186,4 +186,19 @@ class EndpointCoverageIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(response.getStatusCode().is4xxClientError()).isTrue();
     }
+
+    @Test
+    @DisplayName("Token válido de usuário que não existe mais -> 401 (e não 500)")
+    void tokenDeUsuarioInexistenteRetorna401() {
+        String email = "excluido_" + java.util.UUID.randomUUID().toString().substring(0, 8) + "@test.com";
+        registerUser(email, "Usuário Excluído");
+        String token = authenticate(email, "Senha@1234");
+        Long id = userRepository.findByEmail(email).orElseThrow().getId();
+        // O próprio usuário exclui a conta (fluxo do app); o access token continua válido até expirar.
+        assertThat(delete("/api/v1/users/" + id, token).getStatusCode().is2xxSuccessful()).isTrue();
+
+        ResponseEntity<Object> response = get("/api/v1/users/me", token, Object.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(org.springframework.http.HttpStatus.UNAUTHORIZED);
+    }
 }
