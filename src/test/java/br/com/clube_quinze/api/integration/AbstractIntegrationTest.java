@@ -148,7 +148,7 @@ public abstract class AbstractIntegrationTest {
                 new HttpEntity<>(authHeaders(token)), Void.class);
     }
 
-    private void registerUser(String email, String name) {
+    protected void registerUser(String email, String name) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("name", name);
         payload.put("email", email);
