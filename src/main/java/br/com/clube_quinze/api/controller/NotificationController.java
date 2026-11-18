@@ -119,7 +119,9 @@ public class NotificationController {
                 n.getMessage(),
                 n.getType(),
                 n.isRead(),
-                n.getSentAt());
+                n.getSentAt(),
+                n.getAppointmentId(),
+                n.getKind());
     }
 
     @PostMapping("/tokens")

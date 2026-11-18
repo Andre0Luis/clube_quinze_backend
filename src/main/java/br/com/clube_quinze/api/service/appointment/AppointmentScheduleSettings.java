@@ -6,7 +6,7 @@ import java.time.LocalTime;
 public final class AppointmentScheduleSettings {
 
     public static final LocalTime OPENING_TIME = LocalTime.of(9, 0);
-    public static final LocalTime CLOSING_TIME = LocalTime.of(21, 0);
+    public static final LocalTime CLOSING_TIME = LocalTime.of(22, 0);
     public static final Duration SLOT_DURATION = Duration.ofMinutes(30);
 
     /** Granularidade da agenda: início e duração dos atendimentos são múltiplos de 15 minutos. */

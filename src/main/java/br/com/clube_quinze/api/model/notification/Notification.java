@@ -44,6 +44,14 @@ public class Notification {
     @Column(name = "enviada_em")
     private LocalDateTime sentAt;
 
+    /** Agendamento a que a notificação se refere (null para avisos gerais); o app usa para abrir a tela certa. */
+    @Column(name = "agendamento_id")
+    private Long appointmentId;
+
+    /** Tipo de ação do aviso (ex.: admin_reschedule_request); o app decide a rota a partir dele. */
+    @Column(name = "acao", length = 64)
+    private String kind;
+
     @PrePersist
     void prePersist() {
         if (this.sentAt == null) {
@@ -97,6 +105,22 @@ public class Notification {
 
     public void setRead(boolean read) {
         this.read = read;
+    }
+
+    public Long getAppointmentId() {
+        return appointmentId;
+    }
+
+    public void setAppointmentId(Long appointmentId) {
+        this.appointmentId = appointmentId;
+    }
+
+    public String getKind() {
+        return kind;
+    }
+
+    public void setKind(String kind) {
+        this.kind = kind;
     }
 
     public LocalDateTime getSentAt() {
