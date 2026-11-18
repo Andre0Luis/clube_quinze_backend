@@ -293,11 +293,11 @@ class AppointmentIntegrationTest extends AbstractIntegrationTest {
     void deveRecusarAtendimentoQueUltrapassaFechamento() {
         LocalDate day = freshDay();
 
-        // Fecha às 21:00: 20:30 + 60 min estoura o expediente; 20:00 + 60 min cabe.
-        ResponseEntity<Map> late = post(BASE, adminAppointment(day.atTime(20, 30), 60), adminToken, Map.class);
+        // Fecha às 22:00: 21:30 + 60 min estoura o expediente; 21:00 + 60 min cabe.
+        ResponseEntity<Map> late = post(BASE, adminAppointment(day.atTime(21, 30), 60), adminToken, Map.class);
         assertThat(late.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
 
-        ResponseEntity<Map> fits = post(BASE, adminAppointment(day.atTime(20, 0), 60), adminToken, Map.class);
+        ResponseEntity<Map> fits = post(BASE, adminAppointment(day.atTime(21, 0), 60), adminToken, Map.class);
         assertThat(fits.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     }
 
@@ -346,9 +346,9 @@ class AppointmentIntegrationTest extends AbstractIntegrationTest {
         java.util.List<String> adminSlots = (java.util.List<String>) admin.getBody().get("availableSlots");
         java.util.List<String> memberSlots = (java.util.List<String>) member.getBody().get("availableSlots");
         assertThat(adminSlots).anyMatch(slot -> slot.contains("T09:15"));
-        // 45 min a partir de 20:15 termina 21:00 (cabe); 20:30 + 45 não cabe.
-        assertThat(adminSlots).anyMatch(slot -> slot.contains("T20:15"));
-        assertThat(adminSlots).noneMatch(slot -> slot.contains("T20:30"));
+        // 45 min a partir de 21:15 termina 22:00 (cabe); 21:30 + 45 não cabe.
+        assertThat(adminSlots).anyMatch(slot -> slot.contains("T21:15"));
+        assertThat(adminSlots).noneMatch(slot -> slot.contains("T21:30"));
         assertThat(memberSlots).noneMatch(slot -> slot.contains("T09:15"));
     }
 

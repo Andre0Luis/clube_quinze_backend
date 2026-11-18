@@ -12,5 +12,7 @@ public record NotificationResponse(
         String message,
         NotificationType type,
         boolean read,
-        LocalDateTime sentAt) implements Serializable {
+        LocalDateTime sentAt,
+        Long appointmentId,
+        String kind) implements Serializable {
 }

@@ -49,7 +49,7 @@ public class PushNotificationServiceImpl implements PushNotificationService {
     public void sendToUser(Long userId, String kind, String title, String body, Map<String, Object> data) {
         // Persiste a notificação in-app SEMPRE (independe de ter device token ou da entrega FCM),
         // para que apareça na lista "Minhas Notificações" do usuário.
-        persistInAppNotification(userId, kind, title, body);
+        persistInAppNotification(userId, kind, title, body, data);
 
         List<PushToken> tokens = pushTokenRepository.findByUserIdAndInvalidatedAtIsNull(userId);
         if (tokens.isEmpty()) return;
@@ -118,7 +118,7 @@ public class PushNotificationServiceImpl implements PushNotificationService {
         return Instant.EPOCH;
     }
 
-    private void persistInAppNotification(Long userId, String kind, String title, String body) {
+    private void persistInAppNotification(Long userId, String kind, String title, String body, Map<String, Object> data) {
         try {
             Notification n = new Notification();
             n.setUser(userRepository.getReferenceById(userId));
@@ -126,11 +126,33 @@ public class PushNotificationServiceImpl implements PushNotificationService {
             n.setMessage(body != null ? body : "");
             n.setType(mapType(kind));
             n.setRead(false);
+            Object dataKind = data != null ? data.get("kind") : null;
+            n.setKind(truncate(dataKind != null ? dataKind.toString() : kind, 64));
+            n.setAppointmentId(appointmentIdOf(data));
             notificationRepository.save(n);
         } catch (Exception ex) {
             // best-effort: nunca quebrar o envio por falha ao gravar a notificação in-app
             log.warn("Falha ao persistir notificação in-app para user {}: {}", userId, ex.getMessage());
         }
+    }
+
+    private static Long appointmentIdOf(Map<String, Object> data) {
+        Object raw = data != null ? data.get("appointmentId") : null;
+        if (raw instanceof Number number) {
+            return number.longValue();
+        }
+        if (raw != null) {
+            try {
+                return Long.valueOf(raw.toString());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static String truncate(String value, int max) {
+        return value != null && value.length() > max ? value.substring(0, max) : value;
     }
 
     private NotificationType mapType(String kind) {
