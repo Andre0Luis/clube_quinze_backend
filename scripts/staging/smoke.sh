@@ -110,7 +110,18 @@ new_at="$(slot $((RANDOM % 250 + 340)) 15)"
 api POST "/api/v1/appointments/$appt2/reschedule-request" "$MEMBER_TOKEN" "{\"newDate\":\"$new_at\"}"
 expect 200 "cliente propõe remarcação"
 [ "$(field '.status')" = "RESCHEDULE_REQUESTED" ] || fail "status deveria ser RESCHEDULE_REQUESTED"
+# A homologação acumula agendamentos de execuções anteriores: se o horário proposto já estiver ocupado (422 "Conflito"),
+# o admin aprova em outro horário livre (newDate), como o app faz.
 api POST "/api/v1/appointments/$appt2/reschedule-approve" "$ADMIN_TOKEN" "{\"durationMinutes\":45}"
+for _ in 1 2 3 4 5 6; do
+  if [ "$STATUS" = "422" ] && [[ "$(body)" == *Conflito* ]]; then
+    echo "  horário proposto ocupado; aprovando em outro horário"
+    api POST "/api/v1/appointments/$appt2/reschedule-approve" "$ADMIN_TOKEN" \
+      "{\"durationMinutes\":45,\"newDate\":\"$(slot $((RANDOM % 250 + 340)) 15)\"}"
+  else
+    break
+  fi
+done
 expect 200 "admin aprova com duração de 45 min"
 [ "$(field '.status')" = "CONFIRMED" ] || fail "após aprovar deveria ser CONFIRMED"
 
